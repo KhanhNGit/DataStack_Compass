@@ -1,0 +1,35 @@
+{
+  "_comment": "DataStack Compass — EOL/EOS Database. Dates khi tool ngừng support (End-of-Life) hoặc ngừng bán/cung cấp (End-of-Sale). null = chưa xác định / vẫn đang active.",
+  "tools": {
+    "apache-kafka": {
+      "latest_eol_version": "2.8",
+      "eol_date": "2023-10-01",
+      "eos_date": null,
+      "notes": "Kafka 2.x branch EOL, 3.x is current"
+    },
+    "apache-flink": {
+      "latest_eol_version": "1.16",
+      "eol_date": "2024-03-01",
+      "eos_date": null,
+      "notes": "Flink 1.16.x EOL, 1.18+ is current"
+    },
+    "apache-spark": {
+      "latest_eol_version": "3.3",
+      "eol_date": "2024-06-01",
+      "eos_date": null,
+      "notes": "Spark 3.3.x maintenance ended, 3.5+ is current"
+    },
+    "delta-io": {
+      "latest_eol_version": "2.4",
+      "eol_date": "2024-01-15",
+      "eos_date": null,
+      "notes": "Delta Lake 2.x EOL, 3.x aligned with Spark 3.5"
+    },
+    "starrocks": {
+      "latest_eol_version": "2.5",
+      "eol_date": "2024-04-01",
+      "eos_date": null,
+      "notes": "StarRocks 2.5 EOL, 3.x is current"
+    }
+  }
+}
