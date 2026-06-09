@@ -14,3 +14,4 @@ data/raw/
 data/processed/
 logs/
 *.log
+GEMINI.md
