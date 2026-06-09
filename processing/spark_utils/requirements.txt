@@ -1,0 +1,23 @@
+# =============================================================================
+# DataStack Compass — PySpark Processing Dependencies
+# =============================================================================
+# Install: pip install -r requirements.txt
+# =============================================================================
+
+# Core
+pyspark==3.5.1
+
+# Delta Lake (must match Spark version — 3.5.x → delta-spark 3.1.x)
+delta-spark==3.1.0
+
+# S3A / Hadoop AWS connector
+# NOTE: hadoop-aws JAR is bundled with PySpark; this env var points Spark
+# to the correct JAR version. No separate pip install needed.
+# If running outside the Spark Docker image, ensure hadoop-aws-3.3.6.jar
+# and aws-java-sdk-bundle-1.12.367.jar are on the classpath.
+
+# Data quality (used by processing jobs alongside Spark)
+great-expectations==0.18.12
+
+# Utilities
+python-dotenv==1.0.1
