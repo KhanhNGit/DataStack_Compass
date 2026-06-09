@@ -1,0 +1,191 @@
+###############################################################################
+# DataStack Compass — Docker Compose (Local Development)
+# Services: MinIO, StarRocks, PostgreSQL (Airflow metadata), Airflow
+###############################################################################
+
+version: "3.9"
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.8.0
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "True"
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "False"
+  volumes:
+    - ../../ingestion/dags:/opt/airflow/dags
+  networks:
+    - datastack-net
+  restart: unless-stopped
+
+services:
+  # ---------------------------------------------------------------------------
+  # MinIO — S3-compatible Object Storage (Bronze / Silver / Gold layers)
+  # ---------------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    container_name: datastack-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Console UI
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - ./data/minio:/data
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - datastack-net
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # MinIO Init — Create lakehouse buckets (bronze, silver, gold)
+  # ---------------------------------------------------------------------------
+  minio-init:
+    image: minio/mc
+    container_name: datastack-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 minioadmin minioadmin &&
+        mc mb --ignore-existing local/bronze &&
+        mc mb --ignore-existing local/silver &&
+        mc mb --ignore-existing local/gold &&
+        echo '✅ Buckets created: bronze, silver, gold'
+      "
+    networks:
+      - datastack-net
+    restart: on-failure
+
+  # ---------------------------------------------------------------------------
+  # StarRocks — OLAP Engine (All-in-One: FE + BE)
+  # ---------------------------------------------------------------------------
+  starrocks:
+    image: starrocks/allin1-ubuntu:latest
+    container_name: datastack-starrocks
+    ports:
+      - "8030:8030"   # FE HTTP port
+      - "9020:9020"   # BE Heartbeat port
+      - "9030:9030"   # MySQL protocol port
+    environment:
+      FE_JAVA_OPTS: "-Xmx2g"
+      BE_JAVA_OPTS: "-Xmx2g"
+    volumes:
+      - ./data/starrocks:/data
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-P", "9030", "-u", "root"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks:
+      - datastack-net
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — Airflow Metadata Database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: datastack-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - datastack-net
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Airflow Init — DB migration + Admin user creation (run-once)
+  # ---------------------------------------------------------------------------
+  airflow-init:
+    <<: *airflow-common
+    container_name: datastack-airflow-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      bash -c "
+        airflow db migrate &&
+        airflow users create
+          --role Admin
+          --username admin
+          --password admin
+          --email admin@local.com
+          --firstname Admin
+          --lastname User ||
+        true
+      "
+    restart: on-failure
+
+  # ---------------------------------------------------------------------------
+  # Airflow Webserver — UI on port 8080
+  # ---------------------------------------------------------------------------
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: datastack-airflow-webserver
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    command: webserver
+    ports:
+      - "8080:8080"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # ---------------------------------------------------------------------------
+  # Airflow Scheduler — DAG execution
+  # ---------------------------------------------------------------------------
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: datastack-airflow-scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    command: scheduler
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  datastack-net:
+    driver: bridge
+    name: datastack-net
