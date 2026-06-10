@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   Database,
@@ -11,7 +12,10 @@ import {
   ChevronRight,
   Compass,
   Menu,
+  X,
+  Loader2,
 } from 'lucide-react';
+import api from '../../config/api';
 
 /* ─── Navigation items ─────────────────────────────────────────────────────── */
 const NAV_ITEMS = [
@@ -21,18 +25,76 @@ const NAV_ITEMS = [
   { to: '/governance', label: 'Governance & Knowledge', icon: Shield },
 ] as const;
 
+/* ─── Debounce hook ────────────────────────────────────────────────────────── */
+function useDebounce<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
 /* ─── Component ────────────────────────────────────────────────────────────── */
 export default function AppLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
   const navigate = useNavigate();
+  const searchRef = useRef<HTMLDivElement>(null);
 
-  const handleSearch = (e: React.FormEvent) => {
+  const debouncedQuery = useDebounce(searchQuery.trim(), 300);
+
+  // ── Search API call ───────────────────────────────────────────────────
+  const { data: searchResults, isFetching: isSearching } = useQuery({
+    queryKey: ['globalSearch', debouncedQuery],
+    queryFn: async () => {
+      if (!debouncedQuery) return [];
+      const res = await api.get('/api/v1/tools/search', {
+        params: { q: debouncedQuery },
+      });
+      return res.data?.data ?? [];
+    },
+    enabled: debouncedQuery.length >= 1,
+    staleTime: 30_000,
+  });
+
+  // ── Show dropdown khi có results ──────────────────────────────────────
+  useEffect(() => {
+    setShowDropdown(
+      debouncedQuery.length >= 1 &&
+        Array.isArray(searchResults) &&
+        searchResults.length > 0,
+    );
+  }, [debouncedQuery, searchResults]);
+
+  // ── Click outside → close dropdown ────────────────────────────────────
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
+      setShowDropdown(false);
       navigate(`/catalog?search=${encodeURIComponent(searchQuery.trim())}`);
     }
   };
+
+  const handleSelectResult = useCallback(
+    (toolName: string) => {
+      setSearchQuery('');
+      setShowDropdown(false);
+      navigate(`/catalog/${toolName}`);
+    },
+    [navigate],
+  );
 
   const sidebarWidth = collapsed ? 'w-16' : 'w-60';
 
@@ -77,14 +139,8 @@ export default function AppLayout() {
                  }`
               }
             >
-              <Icon
-                size={20}
-                className="flex-shrink-0 transition-colors"
-              />
-              {!collapsed && (
-                <span className="truncate">{label}</span>
-              )}
-              {/* Active indicator */}
+              <Icon size={20} className="flex-shrink-0 transition-colors" />
+              {!collapsed && <span className="truncate">{label}</span>}
             </NavLink>
           ))}
         </nav>
@@ -107,10 +163,7 @@ export default function AppLayout() {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
         <header
-          className="
-            flex items-center h-14 px-6 gap-4 flex-shrink-0
-            border-b
-          "
+          className="flex items-center h-14 px-6 gap-4 flex-shrink-0 border-b"
           style={{
             background: 'var(--header-bg)',
             borderColor: 'var(--header-border)',
@@ -124,28 +177,82 @@ export default function AppLayout() {
             <Menu size={20} />
           </button>
 
-          {/* Global search */}
-          <form onSubmit={handleSearch} className="flex-1 max-w-md">
-            <div className="relative">
-              <Search
-                size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              />
-              <input
-                type="text"
-                placeholder="Search tools, versions, CVEs..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+          {/* ── Global search with live dropdown ──────────────────────── */}
+          <div ref={searchRef} className="relative flex-1 max-w-md">
+            <form onSubmit={handleSearchSubmit}>
+              <div className="relative">
+                {isSearching ? (
+                  <Loader2
+                    size={16}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-500 animate-spin"
+                  />
+                ) : (
+                  <Search
+                    size={16}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
+                )}
+                <input
+                  type="text"
+                  placeholder="Search tools, versions, CVEs..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onFocus={() => {
+                    if (searchResults?.length) setShowDropdown(true);
+                  }}
+                  className="
+                    w-full h-9 pl-9 pr-8 rounded-lg
+                    bg-slate-50 border border-slate-200
+                    text-sm text-slate-700 placeholder:text-slate-400
+                    outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400
+                    transition-all
+                  "
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchQuery('');
+                      setShowDropdown(false);
+                    }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            </form>
+
+            {/* Dropdown results */}
+            {showDropdown && (
+              <div
                 className="
-                  w-full h-9 pl-9 pr-4 rounded-lg
-                  bg-slate-50 border border-slate-200
-                  text-sm text-slate-700 placeholder:text-slate-400
-                  outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400
-                  transition-all
+                  absolute top-full left-0 right-0 mt-1.5 z-50
+                  bg-white border border-slate-200 rounded-xl shadow-lg
+                  max-h-72 overflow-y-auto
                 "
-              />
-            </div>
-          </form>
+              >
+                {(searchResults ?? []).map((item: any) => (
+                  <button
+                    key={`${item.tool_name}-${item.latest_version}`}
+                    onClick={() => handleSelectResult(item.tool_name)}
+                    className="
+                      w-full flex items-center justify-between px-4 py-2.5
+                      text-left hover:bg-slate-50 transition-colors
+                      border-b border-slate-50 last:border-0
+                    "
+                  >
+                    <span className="text-sm font-medium text-slate-800">
+                      {item.tool_name}
+                    </span>
+                    <span className="text-xs font-mono text-slate-400">
+                      v{item.latest_version}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Right side */}
           <div className="flex items-center gap-3">
@@ -157,14 +264,11 @@ export default function AppLayout() {
               "
             >
               <Bell size={18} />
-              {/* Notification dot */}
               <span
                 className="absolute top-2 right-2 pulse-dot"
                 style={{ background: 'var(--danger)' }}
               />
             </button>
-
-            {/* User avatar */}
             <div
               className="
                 w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600
