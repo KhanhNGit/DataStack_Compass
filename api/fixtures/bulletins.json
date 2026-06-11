@@ -1,0 +1,116 @@
+[
+  {
+    "id": "BULL-2026-010",
+    "date": "2026-06-11T08:00:00Z",
+    "tool": "apache-kafka",
+    "cve_count": 2,
+    "severity": "Critical",
+    "status": "Sent",
+    "cves": [
+      {"id": "CVE-2026-1001", "cvss": 9.8, "description": "Remote code execution in Kafka Connect"},
+      {"id": "CVE-2026-1002", "cvss": 8.5, "description": "Authentication bypass"}
+    ]
+  },
+  {
+    "id": "BULL-2026-009",
+    "date": "2026-06-08T14:30:00Z",
+    "tool": "apache-spark",
+    "cve_count": 1,
+    "severity": "High",
+    "status": "Acknowledged",
+    "cves": [
+      {"id": "CVE-2026-1003", "cvss": 7.5, "description": "Denial of service in Spark SQL"}
+    ]
+  },
+  {
+    "id": "BULL-2026-008",
+    "date": "2026-06-05T09:15:00Z",
+    "tool": "apache-flink",
+    "cve_count": 3,
+    "severity": "Medium",
+    "status": "Acknowledged",
+    "cves": [
+      {"id": "CVE-2026-1004", "cvss": 6.5, "description": "Information disclosure in Flink UI"},
+      {"id": "CVE-2026-1005", "cvss": 5.5, "description": "Path traversal in JobManager"},
+      {"id": "CVE-2026-1006", "cvss": 4.0, "description": "XSS in Dashboard"}
+    ]
+  },
+  {
+    "id": "BULL-2026-007",
+    "date": "2026-06-01T11:00:00Z",
+    "tool": "delta-io",
+    "cve_count": 1,
+    "severity": "Low",
+    "status": "Acknowledged",
+    "cves": [
+      {"id": "CVE-2026-1007", "cvss": 3.2, "description": "Minor metadata leak"}
+    ]
+  },
+  {
+    "id": "BULL-2026-006",
+    "date": "2026-05-28T16:45:00Z",
+    "tool": "starrocks",
+    "cve_count": 1,
+    "severity": "Critical",
+    "status": "Sent",
+    "cves": [
+      {"id": "CVE-2026-1008", "cvss": 9.1, "description": "SQL injection via specific UDFs"}
+    ]
+  },
+  {
+    "id": "BULL-2026-005",
+    "date": "2026-05-20T10:20:00Z",
+    "tool": "apache-kafka",
+    "cve_count": 1,
+    "severity": "High",
+    "status": "Acknowledged",
+    "cves": [
+      {"id": "CVE-2026-1009", "cvss": 8.0, "description": "Privilege escalation in Broker"}
+    ]
+  },
+  {
+    "id": "BULL-2026-004",
+    "date": "2026-05-15T09:00:00Z",
+    "tool": "apache-spark",
+    "cve_count": 2,
+    "severity": "Medium",
+    "status": "Sent",
+    "cves": [
+      {"id": "CVE-2026-1010", "cvss": 6.8, "description": "Insecure temporary file creation"},
+      {"id": "CVE-2026-1011", "cvss": 5.0, "description": "Log spoofing vulnerability"}
+    ]
+  },
+  {
+    "id": "BULL-2026-003",
+    "date": "2026-05-10T13:30:00Z",
+    "tool": "apache-flink",
+    "cve_count": 1,
+    "severity": "Critical",
+    "status": "Acknowledged",
+    "cves": [
+      {"id": "CVE-2026-1012", "cvss": 9.9, "description": "RCE via untrusted deserialization"}
+    ]
+  },
+  {
+    "id": "BULL-2026-002",
+    "date": "2026-05-05T15:15:00Z",
+    "tool": "starrocks",
+    "cve_count": 1,
+    "severity": "High",
+    "status": "Acknowledged",
+    "cves": [
+      {"id": "CVE-2026-1013", "cvss": 7.8, "description": "Buffer overflow in query parser"}
+    ]
+  },
+  {
+    "id": "BULL-2026-001",
+    "date": "2026-04-28T08:45:00Z",
+    "tool": "apache-kafka",
+    "cve_count": 1,
+    "severity": "Medium",
+    "status": "Acknowledged",
+    "cves": [
+      {"id": "CVE-2026-1014", "cvss": 5.3, "description": "Memory leak in specific SASL configuration"}
+    ]
+  }
+]
