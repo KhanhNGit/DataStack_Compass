@@ -61,18 +61,10 @@ Step-by-step từ zero:
    python processing/spark_jobs/init_tables.py
    ```
 
-6. Setup StarRocks external catalog
-   Thực thi câu lệnh SQL sau trong trình quản lý hoặc client connect tới StarRocks (port 9030):
-   ```sql
-   CREATE EXTERNAL CATALOG minio_catalog
-   PROPERTIES (
-       "type" = "deltalake",
-       "hive.metastore.type" = "dlf",
-       "aws.s3.endpoint" = "http://minio:9000",
-       "aws.s3.access_key" = "minioadmin",
-       "aws.s3.secret_key" = "minioadmin",
-       "aws.s3.enable_path_style_access" = "true"
-   );
+6. Setup StarRocks (External Catalog & Internal DB)
+   Khởi tạo danh mục và bảng nội bộ cho StarRocks:
+   ```bash
+   python storage/scripts/init_starrocks.py
    ```
 
 7. Start API
