@@ -241,3 +241,17 @@ class CVEItem(BaseModel):
     def nvd_url(self) -> str:
         """URL tới trang NVD chi tiết."""
         return f"https://nvd.nist.gov/vuln/detail/{self.cve_id}"
+
+
+class CVEStats(BaseModel):
+    """Thống kê tổng quan CVE."""
+
+    total_critical: int = Field(0, description="Tổng số CVE Critical")
+    total_high: int = Field(0, description="Tổng số CVE High")
+    total_medium: int = Field(0, description="Tổng số CVE Medium")
+    total_low: int = Field(0, description="Tổng số CVE Low")
+    new_last_7_days: int = Field(0, description="CVE mới trong 7 ngày qua")
+    new_last_30_days: int = Field(0, description="CVE mới trong 30 ngày qua")
+    most_affected_tool: Optional[str] = Field(None, description="Tool bị ảnh hưởng nhiều nhất")
+    highest_cvss: Optional[float] = Field(None, description="Điểm CVSS cao nhất")
+
