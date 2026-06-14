@@ -1,0 +1,33 @@
+# =============================================================================
+# DataStack Compass — Global Requirements
+# =============================================================================
+# Cấu trúc project chia nhỏ requirements theo module:
+# - api/requirements.txt
+# - processing/spark_utils/requirements.txt
+# - ingestion/requirements.txt
+# File này là tổng hợp (aggregate) của tất cả modules.
+# =============================================================================
+
+# --- Backend API ---
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+pydantic==2.7.4
+pymysql==1.1.1
+cryptography==42.0.8
+DBUtils==3.1.0
+httpx==0.27.0
+
+# --- Processing & Data Quality ---
+pyspark==3.5.1
+delta-spark==3.1.0
+great-expectations==0.18.12
+
+# --- Ingestion & Orchestration ---
+apache-airflow==2.9.2
+requests==2.32.3
+feedparser==6.0.11
+
+# --- Utilities ---
+python-dotenv==1.0.1
+pytest==8.2.2
+boto3==1.34.120

@@ -115,6 +115,16 @@ silver_license_changes = StructType([
     StructField("changed_at", DateType(), nullable=True),
 ])
 
+silver_blogs = StructType([
+    StructField("tool_name", StringType(), nullable=False),
+    StructField("title", StringType(), nullable=False),
+    StructField("url", StringType(), nullable=False),
+    StructField("published_date", TimestampType(), nullable=True),
+    StructField("summary", StringType(), nullable=True),
+    StructField("tags", ArrayType(StringType()), nullable=True),
+    StructField("source_feed", StringType(), nullable=True),
+])
+
 # =============================================================================
 # 3. Gold Layer — Aggregated / business-ready
 # =============================================================================
@@ -139,6 +149,7 @@ _TABLE_REGISTRY: Dict[str, tuple[str, StructType]] = {
     "silver_cves":              ("silver", silver_cves),
     "silver_compatibility":     ("silver", silver_compatibility),
     "silver_license_changes":   ("silver", silver_license_changes),
+    "silver_blogs":             ("silver", silver_blogs),
     "gold_tool_summary":        ("gold",   gold_tool_summary),
 }
 
