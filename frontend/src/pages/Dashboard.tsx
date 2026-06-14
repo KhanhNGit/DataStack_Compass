@@ -10,9 +10,12 @@ import {
   ExternalLink,
   AlertTriangle,
   TrendingUp,
+  TrendingUp,
   CalendarClock,
 } from 'lucide-react';
 import api from '../config/api';
+import { Skeleton, StatCardSkeleton } from '../components/Skeleton';
+import { EmptyState } from '../components/EmptyState/EmptyState';
 
 /* ============================================================================
    API fetch helpers
@@ -49,25 +52,9 @@ async function fetchAssetRiskOverview(): Promise<any[]> {
    Reusable components
    ============================================================================ */
 
-/* ─── Skeleton loader ──────────────────────────────────────────────────────── */
-function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`skeleton ${className}`} />;
-}
+/* ─── Reusable components ─────────────────────────────────────────────────── */
 
-function StatCardSkeleton() {
-  return (
-    <div className="card p-5 space-y-3">
-      <div className="flex items-start justify-between">
-        <div className="space-y-2 flex-1">
-          <Skeleton className="h-3 w-24" />
-          <Skeleton className="h-8 w-16" />
-        </div>
-        <Skeleton className="h-10 w-10 rounded-lg" />
-      </div>
-      <Skeleton className="h-3 w-32" />
-    </div>
-  );
-}
+/* ─── Reusable components ─────────────────────────────────────────────────── */
 
 function TableSkeleton({ rows = 5 }: { rows?: number }) {
   return (
@@ -386,12 +373,7 @@ export default function Dashboard() {
               onRetry={() => cvesQuery.refetch()}
             />
           ) : criticalCves.length === 0 ? (
-            <div className="py-12 text-center">
-              <ShieldCheck size={36} className="mx-auto text-emerald-300" />
-              <p className="text-sm text-slate-500 mt-3">
-                No critical CVEs — your stack is looking healthy!
-              </p>
-            </div>
+            <EmptyState.NoCVEsFound />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -492,7 +474,7 @@ export default function Dashboard() {
           </div>
 
           {eolQuery.isLoading ? (
-            <TableSkeleton rows={4} />
+            <TableSkeleton rows={5} />
           ) : eolQuery.isError ? (
             <ErrorState
               message="Failed to load EOL data"

@@ -7,6 +7,7 @@ import TechCatalog from './pages/TechCatalog';
 import ToolDetail from './pages/ToolDetail';
 import AnalysisWorkspace from './pages/AnalysisWorkspace';
 import GovernanceKnowledge from './pages/GovernanceKnowledge';
+import { ToastProvider } from './components/Toast/ToastProvider';
 
 /* ─── React Query client ──────────────────────────────────────────────────── */
 const queryClient = new QueryClient({
@@ -23,17 +24,19 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          <Route element={<AppLayout />}>
-            <Route index element={<Dashboard />} />
-            <Route path="catalog" element={<TechCatalog />} />
-            <Route path="catalog/:toolName" element={<ToolDetail />} />
-            <Route path="analysis" element={<AnalysisWorkspace />} />
-            <Route path="governance" element={<GovernanceKnowledge />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <ToastProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route element={<AppLayout />}>
+              <Route index element={<Dashboard />} />
+              <Route path="catalog" element={<TechCatalog />} />
+              <Route path="catalog/:toolName" element={<ToolDetail />} />
+              <Route path="analysis" element={<AnalysisWorkspace />} />
+              <Route path="governance" element={<GovernanceKnowledge />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </ToastProvider>
     </QueryClientProvider>
   );
 }

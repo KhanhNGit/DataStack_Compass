@@ -15,6 +15,8 @@ import {
   Calendar,
 } from 'lucide-react';
 import api from '../config/api';
+import { TableRowSkeleton } from '../components/Skeleton';
+import { EmptyState } from '../components/EmptyState/EmptyState';
 
 /* ============================================================================
    Types
@@ -45,22 +47,6 @@ const LIFECYCLE_BADGE: Record<string, { color: string; bg: string }> = {
 /* ============================================================================
    Sub-components
    ============================================================================ */
-
-function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`skeleton ${className}`} />;
-}
-
-function TableRowSkeleton() {
-  return (
-    <tr>
-      {Array.from({ length: 6 }).map((_, i) => (
-        <td key={i} className="py-3.5 px-5">
-          <Skeleton className="h-4 w-full max-w-24" />
-        </td>
-      ))}
-    </tr>
-  );
-}
 
 function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
@@ -349,12 +335,7 @@ export default function TechCatalog() {
 
             {/* Empty state */}
             {!isLoading && sorted.length === 0 && (
-              <div className="py-16 text-center">
-                <Database size={40} className="mx-auto text-slate-300" />
-                <p className="text-sm text-slate-500 mt-3">
-                  No tools found matching your filters
-                </p>
-              </div>
+              <EmptyState.NoToolsFound />
             )}
 
             {/* ── Pagination ──────────────────────────────────────────────── */}

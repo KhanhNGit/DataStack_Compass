@@ -20,6 +20,8 @@ import {
   Settings,
 } from 'lucide-react';
 import api from '../config/api';
+import { Skeleton, TableRowSkeleton, StatCardSkeleton, CVEBadgeSkeleton } from '../components/Skeleton';
+import { EmptyState } from '../components/EmptyState/EmptyState';
 
 /* ============================================================================
    Types
@@ -95,10 +97,6 @@ function parseJsonField(value: any): string[] {
 /* ============================================================================
    Sub-components
    ============================================================================ */
-
-function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`skeleton ${className}`} />;
-}
 
 function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
@@ -224,6 +222,60 @@ export default function ToolDetail() {
         <span className="text-slate-700 font-medium">{summary.tool_name}</span>
       </nav>
 
+      {/* ── Header stats ────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {isLoadingSummary ? (
+          <StatCardSkeleton />
+        ) : (
+          <div className="card p-4">
+            <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">Status</div>
+            <div className="font-semibold text-slate-900">
+              <span
+                className="inline-flex items-center px-2 py-0.5 rounded-full text-xs"
+                style={{ background: lcBadge.bg, color: lcBadge.color }}
+              >
+                {summary.lifecycle_status}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {isLoadingSummary ? (
+          <StatCardSkeleton />
+        ) : (
+          <div className="card p-4">
+            <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">EOL Date</div>
+            <div className="font-semibold text-slate-900 flex items-center gap-2">
+              <Calendar size={14} className="text-slate-400" />
+              {summary.eol_date ? new Date(summary.eol_date).toLocaleDateString('en-CA') : '—'}
+            </div>
+          </div>
+        )}
+
+        {isLoadingSummary ? (
+          <StatCardSkeleton />
+        ) : (
+          <div className="card p-4">
+            <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">Security Risk</div>
+            <div className="font-semibold text-slate-900 flex items-center gap-2">
+              <ShieldAlert size={14} style={{ color: RISK_COLORS[summary.risk_level.toLowerCase()] ?? '#94a3b8' }} />
+              <span className="capitalize">{summary.risk_level}</span>
+            </div>
+          </div>
+        )}
+
+        {isLoadingSummary ? (
+          <StatCardSkeleton />
+        ) : (
+          <div className="card p-4">
+            <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">High/Crit CVEs</div>
+            <div className="font-semibold text-slate-900 text-lg tabular-nums">
+              {summary.total_cve_critical + summary.total_cve_high}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* ── Header card ─────────────────────────────────────────────────── */}
       <div className="card p-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -259,33 +311,6 @@ export default function ToolDetail() {
             Updated {summary.last_updated ? new Date(summary.last_updated).toLocaleDateString('en-CA') : '—'}
           </div>
         </div>
-      </div>
-
-      {/* ── CVE severity stats ──────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {(['Critical', 'High', 'Medium', 'Low'] as const).map((sev) => {
-          const count = cveBreakdown.find((b) => b.severity === sev)?.count ?? 0;
-          const colors: Record<string, { color: string; bg: string }> = {
-            Critical: { color: '#dc2626', bg: '#fef2f2' },
-            High:     { color: '#ea580c', bg: '#fff7ed' },
-            Medium:   { color: '#ca8a04', bg: '#fefce8' },
-            Low:      { color: '#16a34a', bg: '#f0fdf4' },
-          };
-          const c = colors[sev];
-          return (
-            <div key={sev} className="card p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wide">{sev}</p>
-                  <p className="text-2xl font-bold mt-0.5" style={{ color: c.color }}>{count}</p>
-                </div>
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: c.bg }}>
-                  <Shield size={16} style={{ color: c.color }} />
-                </div>
-              </div>
-            </div>
-          );
-        })}
       </div>
 
       {/* ── Tab navigation ──────────────────────────────────────────────── */}
@@ -368,15 +393,7 @@ function VersionsTab({
           </thead>
           <tbody className="divide-y divide-slate-50">
             {isLoading
-              ? Array.from({ length: 8 }).map((_, i) => (
-                  <tr key={i}>
-                    <td className="py-3 px-2"><Skeleton className="h-4 w-4" /></td>
-                    <td className="py-3 px-4"><Skeleton className="h-4 w-20" /></td>
-                    <td className="py-3 px-4"><Skeleton className="h-4 w-24" /></td>
-                    <td className="py-3 px-4"><Skeleton className="h-4 w-12 mx-auto" /></td>
-                    <td className="py-3 px-4"><Skeleton className="h-4 w-8 mx-auto" /></td>
-                  </tr>
-                ))
+              ? Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} columns={5} />)
               : versions.map((v, idx) => {
                   const isOpen = expanded === v.version;
                   const breaking = parseJsonField(v.breaking_changes);
@@ -632,10 +649,7 @@ function CvesTab({
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="card py-16 text-center">
-          <Shield size={36} className="mx-auto text-emerald-300" />
-          <p className="text-sm text-slate-500 mt-3">No CVEs match your filters</p>
-        </div>
+        <EmptyState.NoCVEsFound days={30} />
       ) : (
         // Grouped display
         Object.entries(grouped)

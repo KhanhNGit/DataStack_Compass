@@ -16,6 +16,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import api from '../../config/api';
+import { usePreferences } from '../../hooks/usePreferences';
 
 /* ─── Navigation items ─────────────────────────────────────────────────────── */
 const NAV_ITEMS = [
@@ -35,13 +36,35 @@ function useDebounce<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
-/* ─── Component ────────────────────────────────────────────────────────────── */
 export default function AppLayout() {
-  const [collapsed, setCollapsed] = useState(false);
+  const { preferences, updatePreference } = usePreferences();
+  const [collapsed, setCollapsed] = useState(preferences.sidebarCollapsed);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const navigate = useNavigate();
   const searchRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    updatePreference('sidebarCollapsed', collapsed);
+  }, [collapsed, updatePreference]);
+
+  // Handle mobile resize
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1280 && collapsed) {
+        // Desktop: expand by default unless user prefers collapsed
+        // But since we use user preferences, we can leave it.
+      } else if (window.innerWidth >= 768 && window.innerWidth < 1280) {
+        setCollapsed(true);
+      } else if (window.innerWidth < 768) {
+        setMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    handleResize(); // Init on mount
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const debouncedQuery = useDebounce(searchQuery.trim(), 300);
 
@@ -100,14 +123,32 @@ export default function AppLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden">
+      {/* ═══ Mobile Nav Overlay ═══ */}
+      {mobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
       {/* ═══ Sidebar ═══ */}
       <aside
         className={`
-          ${sidebarWidth} flex flex-col flex-shrink-0
+          fixed md:relative z-50 h-full flex flex-col flex-shrink-0
           transition-all duration-300 ease-in-out
+          ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+          ${sidebarWidth}
         `}
         style={{ background: 'var(--sidebar-bg)' }}
       >
+        {/* Mobile close button */}
+        <button 
+          onClick={() => setMobileMenuOpen(false)}
+          className="md:hidden absolute top-4 right-[-40px] text-white p-2"
+        >
+          <X size={24} />
+        </button>
+
         {/* Logo area */}
         <div className="flex items-center h-14 px-4 border-b border-white/5">
           <div className="flex items-center gap-2.5 overflow-hidden">
@@ -145,17 +186,6 @@ export default function AppLayout() {
           ))}
         </nav>
 
-        {/* Collapse toggle */}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="
-            flex items-center justify-center h-10 mx-2 mb-3
-            rounded-lg text-slate-500 hover:text-slate-300
-            hover:bg-white/5 transition-all
-          "
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
       </aside>
 
@@ -163,7 +193,7 @@ export default function AppLayout() {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
         <header
-          className="flex items-center h-14 px-6 gap-4 flex-shrink-0 border-b"
+          className="flex items-center h-14 px-4 md:px-6 gap-3 md:gap-4 flex-shrink-0 border-b"
           style={{
             background: 'var(--header-bg)',
             borderColor: 'var(--header-border)',
@@ -171,8 +201,17 @@ export default function AppLayout() {
         >
           {/* Mobile menu toggle */}
           <button
-            className="lg:hidden text-slate-500 hover:text-slate-700"
+            className="md:hidden text-slate-500 hover:text-slate-700 p-1"
+            onClick={() => setMobileMenuOpen(true)}
+          >
+            <Menu size={20} />
+          </button>
+
+          {/* Desktop collapse toggle */}
+          <button
+            className="hidden md:block text-slate-400 hover:text-slate-600 p-1 mr-2"
             onClick={() => setCollapsed(!collapsed)}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             <Menu size={20} />
           </button>

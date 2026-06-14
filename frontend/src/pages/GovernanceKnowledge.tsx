@@ -6,6 +6,7 @@ import {
   Tag as TagIcon, X, Filter, 
   BookOpen, ChevronRight, Activity 
 } from 'lucide-react';
+import { EmptyState } from '../components/EmptyState/EmptyState';
 
 /* ─── Types ───────────────────────────────────────────────────────────────── */
 type CVE = {
@@ -149,10 +150,7 @@ export default function GovernanceKnowledge() {
               ))}
             </div>
           ) : filteredBulletins.length === 0 ? (
-            <div className="p-12 text-center text-slate-500">
-              <ShieldCheck size={48} className="mx-auto text-emerald-200 mb-3" />
-              <p>No security bulletins found for the selected filters.</p>
-            </div>
+            <EmptyState.NoBulletins />
           ) : (
             <div className="divide-y divide-slate-100">
               {filteredBulletins.map(bulletin => (

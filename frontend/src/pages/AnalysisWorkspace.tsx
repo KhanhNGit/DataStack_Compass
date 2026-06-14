@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { GitCompareArrows, ArrowRight, Route, BarChart3, AlertTriangle, CheckCircle, ShieldAlert, Download, X } from 'lucide-react';
 import axios from 'axios';
+import { useToast } from '../components/Toast/ToastProvider';
 
 /* ─── Types & Mocks ───────────────────────────────────────────────────────── */
 type Tab = 'version-diff' | 'stack-compare' | 'upgrade-path';
@@ -86,6 +87,7 @@ export default function AnalysisWorkspace() {
 
 /* ─── Version Diff panel ──────────────────────────────────────────────────── */
 function VersionDiffPanel() {
+  const toast = useToast();
   const [tool, setTool] = useState('apache-kafka');
   const versions = TOOL_VERSIONS[tool] || [];
   const [fromVer, setFromVer] = useState(versions[0] || '');
@@ -118,7 +120,9 @@ function VersionDiffPanel() {
         featureCount: 0, // Not accurately provided by API yet
         bugFixCount: 0,  // Not accurately provided by API yet
       });
+      toast.success('Comparison completed successfully');
     } catch (e) {
+      toast.warning('Using mock data as API is unavailable');
       // Mock result as fallback
       setTimeout(() => {
         setResult({
@@ -297,6 +301,7 @@ function VersionDiffPanel() {
 
 /* ─── Stack Compare panel ─────────────────────────────────────────────────── */
 function StackComparePanel() {
+  const toast = useToast();
   const [selectedTools, setSelectedTools] = useState<string[]>(['apache-kafka', 'apache-spark']);
   const [inputValue, setInputValue] = useState('');
   
@@ -324,7 +329,9 @@ function StackComparePanel() {
         params: { tools: selectedTools.join(',') }
       });
       setResults(res.data.data);
+      toast.success('Stack comparison successful');
     } catch (e) {
+      toast.warning('Using mock data as API is unavailable');
       setTimeout(() => {
         const mocks: StackCompareResult[] = selectedTools.map(t => ({
           tool: t,
@@ -360,6 +367,7 @@ function StackComparePanel() {
     document.body.appendChild(link);
     link.click();
     link.remove();
+    toast.success('CSV exported successfully');
   };
 
   const maxCVEs = results ? Math.max(...results.map(r => r.criticalCVEs)) : 0;
