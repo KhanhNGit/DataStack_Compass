@@ -60,3 +60,34 @@ async def asset_risk_overview(db: Connection = Depends(get_db)):
         rows = cursor.fetchall()
         
     return BaseResponse(data=rows)
+
+
+@router.get(
+    "/eol-timeline",
+    summary="EOL Timeline for Assets",
+    response_model=BaseResponse,
+)
+async def asset_eol_timeline(db: Connection = Depends(get_db)):
+    """Lấy danh sách Asset Inventory và tính số ngày còn lại đến EOL."""
+    sql = """
+        SELECT 
+            a.tool_name,
+            a.version_in_use,
+            g.eol_date,
+            DATEDIFF(g.eol_date, CURRENT_DATE()) AS days_remaining
+        FROM compass_internal.asset_inventory a
+        LEFT JOIN minio_delta_catalog.gold.gold_tool_summary g 
+            ON a.tool_name = g.tool_name
+        WHERE g.eol_date IS NOT NULL
+        GROUP BY 
+            a.tool_name,
+            a.version_in_use,
+            g.eol_date
+        ORDER BY days_remaining ASC
+    """
+    
+    with db.cursor() as cursor:
+        cursor.execute(sql)
+        rows = cursor.fetchall()
+        
+    return BaseResponse(data=rows)

@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
-import { GitCompareArrows, ArrowRight, Route, BarChart3, AlertTriangle, CheckCircle, ShieldAlert, Download, X } from 'lucide-react';
+import { GitCompareArrows, ArrowRight, Route, BarChart3, AlertTriangle, CheckCircle, ShieldAlert, Download, X, Calendar, Lock } from 'lucide-react';
 import axios from 'axios';
 import { useToast } from '../components/Toast/ToastProvider';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 /* ─── Types & Mocks ───────────────────────────────────────────────────────── */
-type Tab = 'version-diff' | 'stack-compare' | 'upgrade-path';
+type Tab = 'version-diff' | 'stack-compare' | 'upgrade-path' | 'eol-assessment';
 
 const TABS: { id: Tab; label: string; icon: typeof GitCompareArrows }[] = [
   { id: 'version-diff', label: 'Version Diff', icon: GitCompareArrows },
   { id: 'stack-compare', label: 'Stack Comparator', icon: BarChart3 },
   { id: 'upgrade-path', label: 'Upgrade Path', icon: Route },
+  { id: 'eol-assessment', label: 'EOL Impact', icon: Calendar },
 ];
 
 const TOOL_VERSIONS: Record<string, string[]> = {
@@ -81,6 +83,7 @@ export default function AnalysisWorkspace() {
       {activeTab === 'version-diff' && <VersionDiffPanel />}
       {activeTab === 'stack-compare' && <StackComparePanel />}
       {activeTab === 'upgrade-path' && <UpgradePathPanel />}
+      {activeTab === 'eol-assessment' && <EolAssessmentPanel />}
     </div>
   );
 }
@@ -511,9 +514,86 @@ function StackComparePanel() {
 
 /* ─── Upgrade Path panel ──────────────────────────────────────────────────── */
 function UpgradePathPanel() {
+  const [tool, setTool] = useState('apache-kafka');
+  const versions = TOOL_VERSIONS[tool] || [];
+  const [currentVersion, setCurrentVersion] = useState(versions[0] || '');
+  const [targetVersion, setTargetVersion] = useState(versions[versions.length - 1] || '');
+  
+  const [loading, setLoading] = useState(false);
+  const [steps, setSteps] = useState<any[] | null>(null);
+
+  // Auto-update versions when tool changes
+  useEffect(() => {
+    const v = TOOL_VERSIONS[tool] || [];
+    setCurrentVersion(v[0] || '');
+    setTargetVersion(v[v.length - 1] || '');
+    setSteps(null);
+  }, [tool]);
+
+  const targetVersions = versions.filter(v => versions.indexOf(v) > versions.indexOf(currentVersion));
+
+  const handlePlanUpgrade = () => {
+    setLoading(true);
+    // Simulate API request and generating steps
+    setTimeout(() => {
+      const startIndex = versions.indexOf(currentVersion);
+      const endIndex = versions.indexOf(targetVersion);
+      const generatedSteps = [];
+      
+      for (let i = startIndex; i < endIndex; i++) {
+        generatedSteps.push({
+          fromVer: versions[i],
+          toVer: versions[i+1],
+          breakingChanges: i === startIndex ? [
+            `KIP-792: Changed default value of log.retention.bytes`,
+            `KIP-811: Deprecated GroupMetadata`
+          ] : [
+            `Minor configuration changes`
+          ],
+          cvesFixed: [
+            { id: `CVE-202${i}-1234`, isCritical: i % 2 === 0 },
+            { id: `CVE-202${i}-5678`, isCritical: false }
+          ],
+          newFeatures: 10 + i * 2
+        });
+      }
+      setSteps(generatedSteps);
+      setLoading(false);
+    }, 600);
+  };
+
+  const handleExportChecklist = () => {
+    if (!steps) return;
+    let md = `# Migration Checklist: ${tool}\n\n`;
+    md += `**Upgrade Path:** ${currentVersion} -> ${targetVersion}\n\n`;
+    
+    steps.forEach((step, idx) => {
+      md += `## Step ${idx + 1}: ${step.fromVer} to ${step.toVer}\n`;
+      md += `### ⚠ Breaking Changes\n`;
+      step.breakingChanges.forEach((bc: string) => md += `- [ ] ${bc}\n`);
+      md += `\n### 🔒 CVEs Fixed\n`;
+      step.cvesFixed.forEach((cve: any) => md += `- ${cve.id} ${cve.isCritical ? '(Critical)' : ''}\n`);
+      md += `\n`;
+    });
+    
+    const blob = new Blob([md], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${tool}_migration_checklist.md`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const totalBreaking = steps?.reduce((acc, step) => acc + step.breakingChanges.length, 0) || 0;
+  const totalCves = steps?.reduce((acc, step) => acc + step.cvesFixed.length, 0) || 0;
+  const effort = totalBreaking > 5 ? 'High' : totalBreaking > 2 ? 'Medium' : 'Low';
+
   return (
     <div className="card p-6 space-y-6 bg-white rounded-xl shadow-sm border border-slate-200">
-      <h2 className="text-lg font-semibold text-slate-900">Upgrade Path Finder</h2>
+      <h2 className="text-lg font-semibold text-slate-900">Upgrade Path Planner</h2>
       <p className="text-sm text-slate-500">
         Find the safest upgrade route between two versions with cumulative breaking changes
       </p>
@@ -522,33 +602,264 @@ function UpgradePathPanel() {
       <div className="flex flex-wrap items-end gap-4">
         <div>
           <label className="block text-xs font-medium text-slate-600 mb-1">Tool</label>
-          <select className="h-9 px-3 rounded-lg border border-slate-200 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500/20">
-            <option>apache-kafka</option>
-            <option>apache-flink</option>
-            <option>apache-spark</option>
+          <select 
+            value={tool} 
+            onChange={e => setTool(e.target.value)}
+            className="h-9 px-3 rounded-lg border border-slate-200 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500/20"
+          >
+            {Object.keys(TOOL_VERSIONS).map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Current</label>
-          <input defaultValue="3.3.0" className="h-9 px-3 rounded-lg border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 w-28" />
+          <label className="block text-xs font-medium text-slate-600 mb-1">Current Version</label>
+          <select 
+            value={currentVersion} 
+            onChange={e => setCurrentVersion(e.target.value)}
+            className="h-9 px-3 rounded-lg border border-slate-200 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500/20 w-32"
+          >
+            {versions.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
         </div>
         <ArrowRight size={20} className="text-slate-400 mb-1" />
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Target</label>
-          <input defaultValue="3.7.1" className="h-9 px-3 rounded-lg border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 w-28" />
+          <label className="block text-xs font-medium text-slate-600 mb-1">Target Version</label>
+          <select 
+            value={targetVersion} 
+            onChange={e => setTargetVersion(e.target.value)}
+            className="h-9 px-3 rounded-lg border border-slate-200 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500/20 w-32"
+          >
+            {targetVersions.map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
         </div>
-        <button className="h-9 px-5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm">
-          Find Path
+        <button 
+          onClick={handlePlanUpgrade}
+          disabled={!targetVersion || currentVersion === targetVersion}
+          className="h-9 px-5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {loading ? 'Planning...' : 'Plan Upgrade'}
         </button>
       </div>
 
-      {/* Placeholder path */}
-      <div className="bg-slate-50 rounded-xl p-8 text-center border border-slate-100">
-        <Route size={40} className="mx-auto text-slate-300" />
-        <p className="text-sm text-slate-500 mt-3">
-          Select versions and click Find Path to see the upgrade route
-        </p>
+      {!steps && !loading && (
+        <div className="bg-slate-50 rounded-xl p-8 text-center border border-slate-100">
+          <Route size={40} className="mx-auto text-slate-300" />
+          <p className="text-sm text-slate-500 mt-3">
+            Select versions and click Plan Upgrade to see the timeline
+          </p>
+        </div>
+      )}
+
+      {steps && (
+        <div className="mt-8 relative">
+          <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
+            {steps.map((step, idx) => (
+              <div key={idx} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
+                <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white bg-indigo-100 text-indigo-600 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
+                  <ArrowRight size={18} className="md:hidden" />
+                  <ArrowRight size={18} className="hidden md:block group-odd:rotate-180" />
+                </div>
+                <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] card p-4 hover:shadow-md transition-shadow">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-bold text-slate-800 text-base">{step.fromVer} → {step.toVer}</h3>
+                  </div>
+                  
+                  <div className="space-y-3 text-sm">
+                    {step.breakingChanges.length > 0 && (
+                      <div>
+                        <div className="font-semibold text-rose-600 flex items-center gap-1.5 mb-1.5">
+                          <AlertTriangle size={14} />
+                          {step.breakingChanges.length} Breaking Changes
+                        </div>
+                        <ul className="text-slate-600 space-y-1 text-xs">
+                          {step.breakingChanges.map((bc: string, i: number) => (
+                            <li key={i} className="flex items-start gap-1.5">
+                              <span className="text-rose-400 mt-0.5">•</span> {bc}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    <div className="flex items-center gap-4 border-t border-slate-100 pt-3">
+                      <div className="flex items-center gap-1.5 text-emerald-600 font-medium text-xs">
+                        <Lock size={14} />
+                        {step.cvesFixed.length} CVEs Fixed ({step.cvesFixed.filter((c: any) => c.isCritical).length} Critical)
+                      </div>
+                      <div className="flex items-center gap-1.5 text-indigo-600 font-medium text-xs">
+                        <BarChart3 size={14} />
+                        {step.newFeatures} New Features
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Summary Box */}
+          <div className="mt-8 max-w-xl mx-auto card bg-slate-900 border-slate-800 text-slate-200 p-6 shadow-xl relative z-20">
+            <h3 className="text-lg font-bold text-white mb-4">Migration Summary</h3>
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-rose-400 mb-1">{totalBreaking}</div>
+                <div className="text-xs uppercase tracking-wider text-slate-400 font-medium">Breaking Changes</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-emerald-400 mb-1">{totalCves}</div>
+                <div className="text-xs uppercase tracking-wider text-slate-400 font-medium">CVEs Resolved</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-bold text-indigo-400 mb-1">
+                  <span className={effort === 'High' ? 'text-rose-400' : effort === 'Medium' ? 'text-amber-400' : 'text-emerald-400'}>{effort}</span>
+                </div>
+                <div className="text-xs uppercase tracking-wider text-slate-400 font-medium">Est. Effort</div>
+              </div>
+            </div>
+            <button 
+              onClick={handleExportChecklist}
+              className="w-full h-10 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium flex items-center justify-center gap-2 transition-colors border border-white/10"
+            >
+              <Download size={16} />
+              Export Migration Checklist
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── EOL Impact Assessment panel ─────────────────────────────────────────── */
+function EolAssessmentPanel() {
+  const toast = useToast();
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetchEolData();
+  }, []);
+
+  const fetchEolData = async () => {
+    setLoading(true);
+    try {
+      const res = await axios.get('/api/v1/assets/eol-timeline');
+      setData(res.data.data);
+    } catch (e) {
+      toast.error('Failed to load EOL timeline data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getBarColor = (days: number) => {
+    if (days > 180) return '#10b981'; // Green
+    if (days >= 90) return '#eab308'; // Yellow
+    if (days >= 30) return '#f97316'; // Orange
+    return '#ef4444'; // Red
+  };
+
+  const handleExportCSV = () => {
+    if (!data.length) return;
+    
+    const rows = [
+      ['Tool', 'Current Version', 'EOL Date', 'Days Remaining', 'Recommended Action']
+    ];
+    
+    data.forEach(item => {
+      const action = item.days_remaining < 30 ? 'Immediate Upgrade Required' : 
+                     item.days_remaining < 90 ? 'Plan Upgrade Soon' : 'Monitor';
+      rows.push([
+        item.tool_name, 
+        item.version_in_use, 
+        item.eol_date ? new Date(item.eol_date).toISOString().split('T')[0] : 'N/A', 
+        item.days_remaining?.toString() || '0', 
+        action
+      ]);
+    });
+    
+    const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "eol_assessment_report.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('EOL Report exported successfully');
+  };
+
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const p = payload[0].payload;
+      return (
+        <div className="bg-slate-900 text-white p-3 rounded-lg shadow-xl text-sm border border-slate-700 min-w-[200px]">
+          <p className="font-bold mb-1 text-indigo-300">{p.tool_name}</p>
+          <p className="text-slate-300">Version: <span className="text-white font-medium">{p.version_in_use}</span></p>
+          <p className="text-slate-300">EOL Date: <span className="text-white font-medium">{p.eol_date ? new Date(p.eol_date).toLocaleDateString() : 'N/A'}</span></p>
+          <p className="text-slate-300">Days Left: <span className="text-white font-medium">{p.days_remaining}</span></p>
+          
+          <div className="mt-3 pt-3 border-t border-slate-700 flex flex-col gap-2">
+            <a href={`/catalog/${p.tool_name}`} className="text-indigo-400 hover:text-indigo-300 text-xs font-medium flex items-center gap-1">
+              Check Latest Versions <ArrowRight size={12} />
+            </a>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <div className="card p-6 space-y-6 bg-white rounded-xl shadow-sm border border-slate-200">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">EOL Impact Assessment</h2>
+          <p className="text-sm text-slate-500 mt-1">
+            Evaluate all team assets against their End-of-Life deadlines
+          </p>
+        </div>
+        <button 
+          onClick={handleExportCSV}
+          disabled={!data.length}
+          className="flex items-center gap-2 h-9 px-4 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
+        >
+          <Download size={16} />
+          Export EOL Report
+        </button>
       </div>
+
+      {loading ? (
+        <div className="h-[400px] flex items-center justify-center">
+          <div className="animate-pulse flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+            <p className="text-sm text-slate-500">Loading EOL data...</p>
+          </div>
+        </div>
+      ) : data.length === 0 ? (
+        <div className="bg-slate-50 rounded-xl p-8 text-center border border-slate-100">
+          <Calendar size={40} className="mx-auto text-slate-300" />
+          <p className="text-sm text-slate-500 mt-3">No EOL timeline data found for current assets.</p>
+        </div>
+      ) : (
+        <div className="h-[400px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={data}
+              layout="vertical"
+              margin={{ top: 20, right: 30, left: 40, bottom: 5 }}
+            >
+              <XAxis type="number" label={{ value: 'Days Remaining', position: 'insideBottom', offset: -5 }} />
+              <YAxis dataKey="tool_name" type="category" width={100} tick={{fontSize: 12}} />
+              <Tooltip cursor={{fill: '#f8fafc'}} content={<CustomTooltip />} />
+              <Bar dataKey="days_remaining" radius={[0, 4, 4, 0]} maxBarSize={40}>
+                {data.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={getBarColor(entry.days_remaining)} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   );
 }
