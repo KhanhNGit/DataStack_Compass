@@ -14,10 +14,10 @@ import {
   RefreshCw,
   PackageCheck,
   FileText,
-  Layers,
   Search,
   Check,
   X as XIcon,
+  Settings,
 } from 'lucide-react';
 import api from '../config/api';
 
@@ -377,10 +377,11 @@ function VersionsTab({
                     <td className="py-3 px-4"><Skeleton className="h-4 w-8 mx-auto" /></td>
                   </tr>
                 ))
-              : versions.map((v) => {
+              : versions.map((v, idx) => {
                   const isOpen = expanded === v.version;
                   const breaking = parseJsonField(v.breaking_changes);
                   const deprecated = parseJsonField(v.deprecated_apis);
+                  const prevVersion = versions[idx + 1]?.version || '0.0.0';
                   return (
                     <>
                       <tr
@@ -468,6 +469,7 @@ function VersionsTab({
                                   <p className="text-slate-400 italic">None</p>
                                 )}
                               </div>
+                              <ConfigChangesTable toolName={toolName!} fromVersion={prevVersion} toVersion={v.version} />
                             </div>
                           </td>
                         </tr>
@@ -484,6 +486,66 @@ function VersionsTab({
           <p className="text-sm text-slate-500 mt-3">No versions found</p>
         </div>
       )}
+    </div>
+  );
+}
+
+function ConfigChangesTable({ toolName, fromVersion, toVersion }: { toolName: string; fromVersion: string; toVersion: string }) {
+  const query = useQuery({
+    queryKey: ['configDiff', toolName, fromVersion, toVersion],
+    queryFn: async () => {
+      const res = await api.get('/api/v1/analysis/config-diff', {
+        params: { tool: toolName, from_version: fromVersion, to_version: toVersion }
+      });
+      return res.data?.data;
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  if (query.isLoading) return <Skeleton className="h-10 w-full mt-4" />;
+  if (query.isError) return null;
+
+  const grouped = query.data;
+  if (!grouped) return null;
+  const allChanges = [...(grouped.new_param || []), ...(grouped.changed_default || []), ...(grouped.deprecated || [])];
+
+  if (allChanges.length === 0) return null;
+
+  return (
+    <div className="col-span-1 md:col-span-2 mt-4 pt-4 border-t border-slate-200">
+      <h4 className="font-semibold text-slate-700 mb-2 flex items-center gap-1.5">
+        <Settings size={12} className="text-slate-500" />
+        Config Changes
+      </h4>
+      <div className="overflow-x-auto rounded border border-slate-200">
+        <table className="w-full text-xs text-left">
+          <thead className="bg-slate-100/50">
+            <tr>
+              <th className="px-3 py-2 font-medium text-slate-600">Parameter</th>
+              <th className="px-3 py-2 font-medium text-slate-600">Old Default</th>
+              <th className="px-3 py-2 font-medium text-slate-600">New Default</th>
+              <th className="px-3 py-2 font-medium text-slate-600 text-center">Impact</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 bg-white">
+            {allChanges.map((c: any, i: number) => (
+              <tr key={i} className={c.impact_level === 'High' ? 'bg-red-50/50' : ''}>
+                <td className="px-3 py-2 font-mono text-slate-700">{c.param_name}</td>
+                <td className="px-3 py-2 text-slate-500">{c.old_default || '—'}</td>
+                <td className="px-3 py-2 text-slate-700">{c.new_default || '—'}</td>
+                <td className="px-3 py-2 text-center">
+                  <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                    c.impact_level === 'High' ? 'bg-red-100 text-red-700' : 
+                    c.impact_level === 'Medium' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'
+                  }`}>
+                    {c.impact_level}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

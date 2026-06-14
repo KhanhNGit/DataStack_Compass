@@ -23,7 +23,7 @@ type VersionDiffResult = {
   breakingChanges: string[];
   resolvedCVEs: string[];
   newCVEs: { id: string; cvss: number }[];
-  configChanges: { key: string; type: 'add' | 'remove' | 'modify'; oldVal?: string; newVal?: string }[];
+  configChanges: { key: string; type: 'add' | 'remove' | 'modify'; oldVal?: string; newVal?: string; impact_level?: string }[];
   featureCount: number;
   bugFixCount: number;
 };
@@ -109,7 +109,15 @@ function VersionDiffPanel() {
       const res = await axios.get('/api/v1/analysis/version-diff', {
         params: { tool, from: fromVer, to: toVer }
       });
-      setResult(res.data.data);
+      const data = res.data.data;
+      setResult({
+        breakingChanges: data.diff.new_breaking_changes || [],
+        resolvedCVEs: data.diff.resolved_cves?.map((c: any) => c.cve_id) || [],
+        newCVEs: data.diff.new_cves?.map((c: any) => ({ id: c.cve_id, cvss: c.cvss_score })) || [],
+        configChanges: data.diff.config_changes || [],
+        featureCount: 0, // Not accurately provided by API yet
+        bugFixCount: 0,  // Not accurately provided by API yet
+      });
     } catch (e) {
       // Mock result as fallback
       setTimeout(() => {
@@ -118,9 +126,9 @@ function VersionDiffPanel() {
           resolvedCVEs: ['CVE-2023-44487', 'CVE-2023-34040'],
           newCVEs: [{ id: 'CVE-2024-21287', cvss: 8.5 }, { id: 'CVE-2024-21288', cvss: 6.2 }],
           configChanges: [
-            { key: 'log.retention.hours', type: 'modify', oldVal: '168', newVal: '72' },
-            { key: 'new.feature.enable', type: 'add', newVal: 'true' },
-            { key: 'old.feature.enable', type: 'remove' }
+            { key: 'log.retention.hours', type: 'modify', oldVal: '168', newVal: '72', impact_level: 'High' },
+            { key: 'new.feature.enable', type: 'add', newVal: 'true', impact_level: 'Low' },
+            { key: 'old.feature.enable', type: 'remove', impact_level: 'Low' }
           ],
           featureCount: 12,
           bugFixCount: 45
@@ -250,8 +258,13 @@ function VersionDiffPanel() {
             <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto shadow-sm">
               <h3 className="text-sm font-semibold text-slate-100 mb-3">Config Changes</h3>
               <div className="font-mono text-xs space-y-2">
-                {result.configChanges.map((c, i) => (
+                {result.configChanges.length > 0 ? result.configChanges.map((c, i) => (
                   <div key={i} className="flex flex-col">
+                    <div className="flex items-center gap-2 mb-1">
+                      {c.impact_level === 'High' && (
+                        <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded font-sans uppercase">High Impact</span>
+                      )}
+                    </div>
                     {c.type === 'add' && <div className="text-emerald-400">+ {c.key} = {c.newVal}</div>}
                     {c.type === 'remove' && <div className="text-rose-400">- {c.key}</div>}
                     {c.type === 'modify' && (
@@ -261,7 +274,9 @@ function VersionDiffPanel() {
                       </div>
                     )}
                   </div>
-                ))}
+                )) : (
+                  <div className="text-slate-500 italic font-sans">No config changes detected.</div>
+                )}
               </div>
             </div>
           </div>

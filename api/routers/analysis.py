@@ -41,6 +41,7 @@ _SILVER_RELEASES = "minio_catalog.silver.silver_releases"
 _SILVER_CVES = "minio_catalog.silver.silver_cves"
 _SILVER_COMPAT = "minio_catalog.silver.silver_compatibility"
 _SILVER_LICENSES = "minio_catalog.silver.silver_license_changes"
+_SILVER_CONFIG = "minio_catalog.silver.silver_config_changes"
 
 # =============================================================================
 # In-memory cache with TTL
@@ -370,6 +371,30 @@ async def version_diff(
                 "description": (cve.get("description") or "")[:200],
             })
 
+    # ── Config Changes analysis ──────────────────────────────────────────
+    config_sql = f"""
+        SELECT to_version, param_name, old_default, new_default, change_type, impact_level
+        FROM {_SILVER_CONFIG}
+        WHERE tool_name = %s
+    """
+    with db.cursor() as cursor:
+        cursor.execute(config_sql, (tool,))
+        all_configs = cursor.fetchall()
+
+    config_changes = []
+    for c in all_configs:
+        if _semver_between(c["to_version"], from_version, to_version, inclusive_from=False, inclusive_to=True):
+            mapped_type = "modify"
+            if c["change_type"] == "new_param": mapped_type = "add"
+            elif c["change_type"] == "deprecated": mapped_type = "remove"
+            config_changes.append({
+                "key": c["param_name"],
+                "type": mapped_type,
+                "oldVal": c.get("old_default"),
+                "newVal": c.get("new_default"),
+                "impact_level": c.get("impact_level")
+            })
+
     # ── Issue counts (estimate từ intermediate releases) ─────────────────
     # Các issues type được đếm nếu có dữ liệu
     versions_with_breaking = [
@@ -388,6 +413,7 @@ async def version_diff(
             "new_deprecated_apis": all_deprecated,
             "resolved_cves": resolved_cves,
             "new_cves": new_cves,
+            "config_changes": config_changes,
             "versions_with_breaking_changes": versions_with_breaking,
             "total_intermediate_releases": len(intermediate_releases),
         },
@@ -776,3 +802,52 @@ async def upgrade_path(
             "overall_recommendation": overall,
         },
     )
+
+
+# =============================================================================
+# 4. Config Diff
+# =============================================================================
+
+@router.get(
+    "/config-diff",
+    summary="Liệt kê config changes giữa 2 version",
+    response_model=BaseResponse,
+)
+async def config_diff(
+    tool: str = Query(..., min_length=1),
+    from_version: str = Query(..., min_length=1),
+    to_version: str = Query(..., min_length=1),
+    db=Depends(get_db),
+):
+    ck = _cache_key("config_diff", tool, from_version, to_version)
+    cached = _cache_get(ck)
+    if cached is not None:
+        return BaseResponse(data=cached, meta={"cached": True})
+
+    sql = f"""
+        SELECT to_version, param_name, old_default, new_default, change_type, impact_level
+        FROM {_SILVER_CONFIG}
+        WHERE tool_name = %s
+    """
+    with db.cursor() as cursor:
+        cursor.execute(sql, (tool,))
+        rows = cursor.fetchall()
+
+    filtered = [
+        r for r in rows
+        if _semver_between(r["to_version"], from_version, to_version, inclusive_from=False, inclusive_to=True)
+    ]
+    
+    # Group by change_type
+    grouped = {
+        "new_param": [],
+        "changed_default": [],
+        "deprecated": []
+    }
+    for r in filtered:
+        ct = r["change_type"]
+        if ct in grouped:
+            grouped[ct].append(r)
+
+    _cache_set(ck, grouped)
+    return BaseResponse(data=grouped, meta={"total_changes": len(filtered)})
