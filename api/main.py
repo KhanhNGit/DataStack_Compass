@@ -31,7 +31,7 @@ from fastapi.responses import JSONResponse
 
 from api.database import check_db_connection, close_pool
 from api.models.response import BaseResponse
-from api.routers import analysis, cves, governance, tools
+from api.routers import analysis, cves, governance, tools, assets
 
 # =============================================================================
 # Logging
@@ -176,3 +176,4 @@ app.include_router(tools.router, prefix="/api/v1/tools", tags=["tools"])
 app.include_router(cves.router, prefix="/api/v1/cves", tags=["cves"])
 app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["analysis"])
 app.include_router(governance.router, prefix="/api/v1/governance", tags=["governance"])
+app.include_router(assets.router, prefix="/api/v1/assets", tags=["assets"])

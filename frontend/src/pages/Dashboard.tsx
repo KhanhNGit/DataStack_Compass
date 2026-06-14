@@ -36,8 +36,13 @@ async function fetchEolTools(): Promise<any[]> {
 }
 
 async function fetchCveStats(): Promise<any> {
-  const res = await api.get('/api/v1/cves/stats');
+  const res = await api.get('/api/v1/cves/stats/summary');
   return res.data?.data ?? {};
+}
+
+async function fetchAssetRiskOverview(): Promise<any[]> {
+  const res = await api.get('/api/v1/assets/risk-overview');
+  return res.data?.data ?? [];
 }
 
 /* ============================================================================
@@ -250,7 +255,14 @@ export default function Dashboard() {
     refetchInterval: REFETCH_INTERVAL,
   });
 
+  const assetsQuery = useQuery({
+    queryKey: ['dashboard', 'assetRisk'],
+    queryFn: fetchAssetRiskOverview,
+    refetchInterval: REFETCH_INTERVAL,
+  });
+
   // ── Derived data ────────────────────────────────────────────────────────
+  const assetRiskData = assetsQuery.data ?? [];
   const totalTools = toolsQuery.data ?? 0;
 
   const criticalCves = cvesQuery.data ?? [];
@@ -507,6 +519,113 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ── 4. Asset Risk Overview ───────────────────────────────────────── */}
+      <div className="card mt-6">
+        <div className="px-5 py-4 border-b border-slate-100">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+              <Database size={16} className="text-indigo-500" />
+              Asset Risk Overview
+            </h2>
+          </div>
+        </div>
+
+        {assetsQuery.isLoading ? (
+          <TableSkeleton rows={5} />
+        ) : assetsQuery.isError ? (
+          <ErrorState message="Failed to load Asset Risk Overview" onRetry={() => assetsQuery.refetch()} />
+        ) : assetRiskData.length === 0 ? (
+          <div className="py-12 text-center">
+            <ShieldCheck size={36} className="mx-auto text-emerald-300" />
+            <p className="text-sm text-slate-500 mt-3">No assets configured in inventory.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50/50">
+                  <th className="text-left py-2.5 px-5 font-medium text-slate-500 text-xs">Department</th>
+                  <th className="text-left py-2.5 px-5 font-medium text-slate-500 text-xs">Project</th>
+                  <th className="text-left py-2.5 px-5 font-medium text-slate-500 text-xs">Team</th>
+                  <th className="text-left py-2.5 px-5 font-medium text-slate-500 text-xs">Tool</th>
+                  <th className="text-left py-2.5 px-5 font-medium text-slate-500 text-xs">Version In Use</th>
+                  <th className="text-center py-2.5 px-5 font-medium text-slate-500 text-xs">CVE Critical/High</th>
+                  <th className="text-center py-2.5 px-5 font-medium text-slate-500 text-xs">EOL Status</th>
+                  <th className="text-center py-2.5 px-5 font-medium text-slate-500 text-xs">Risk Level</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {assetRiskData.map((asset: any, idx: number) => {
+                  const critical = asset.critical_cves_count || 0;
+                  const high = asset.high_cves_count || 0;
+                  
+                  let daysToEol = Infinity;
+                  if (asset.eol_date) {
+                    daysToEol = (new Date(asset.eol_date).getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+                  }
+                  
+                  let riskLevel = 'LOW';
+                  let rowColor = 'bg-white';
+                  
+                  if (critical >= 1 || daysToEol <= 0) {
+                    riskLevel = 'HIGH';
+                    rowColor = 'bg-red-50 hover:bg-red-100/50';
+                  } else if (high >= 2 || daysToEol <= 90) {
+                    riskLevel = 'MEDIUM';
+                    rowColor = 'bg-amber-50 hover:bg-amber-100/50';
+                  } else {
+                    rowColor = 'bg-white hover:bg-slate-50/50';
+                  }
+
+                  return (
+                    <tr key={idx} className={`${rowColor} transition-colors`}>
+                      <td className="py-3 px-5 text-slate-600">{asset.department || '—'}</td>
+                      <td className="py-3 px-5 font-medium text-slate-800">{asset.project_name}</td>
+                      <td className="py-3 px-5 text-slate-600">{asset.team_name || '—'}</td>
+                      <td className="py-3 px-5">
+                        <Link to={`/catalog/${asset.tool_name}`} className="text-indigo-600 hover:text-indigo-700">
+                          {asset.tool_name}
+                        </Link>
+                      </td>
+                      <td className="py-3 px-5 font-mono text-xs">{asset.version_in_use}</td>
+                      <td className="py-3 px-5 text-center">
+                        {critical > 0 ? (
+                          <span className="text-red-600 font-bold">{critical} C</span>
+                        ) : (
+                          <span className="text-slate-400">0 C</span>
+                        )}
+                        {' / '}
+                        {high > 0 ? (
+                          <span className="text-amber-600 font-bold">{high} H</span>
+                        ) : (
+                          <span className="text-slate-400">0 H</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-5 text-center text-xs">
+                        {asset.eol_date ? (
+                          daysToEol <= 0 ? (
+                            <span className="text-red-600 font-semibold">EOL Reached</span>
+                          ) : (
+                            <span>{Math.ceil(daysToEol)} days left</span>
+                          )
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-5 text-center">
+                        <span className={`badge ${riskLevel === 'HIGH' ? 'badge-critical' : riskLevel === 'MEDIUM' ? 'badge-high' : 'badge-low'}`}>
+                          {riskLevel}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

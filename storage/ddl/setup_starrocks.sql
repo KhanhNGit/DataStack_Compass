@@ -15,16 +15,17 @@ USE compass_internal;
 
 -- 3. Bảng asset_inventory (internal, NOT external)
 CREATE TABLE IF NOT EXISTS asset_inventory (
-    id BIGINT AUTO_INCREMENT,
     tool_name VARCHAR(100) NOT NULL,
+    project_name VARCHAR(100) NOT NULL,
+    environment VARCHAR(50) DEFAULT 'production',
+    department VARCHAR(100),
+    team_name VARCHAR(100),
     version_in_use VARCHAR(50) NOT NULL,
     owner_email VARCHAR(200),
-    team_name VARCHAR(100),
-    environment VARCHAR(50) DEFAULT 'production',
     registered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=OLAP
-DUPLICATE KEY(id)
+PRIMARY KEY(tool_name, project_name, environment)
 DISTRIBUTED BY HASH(tool_name) BUCKETS 4
 PROPERTIES ("replication_num" = "1");
 
