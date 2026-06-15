@@ -23,6 +23,7 @@ import api from '../config/api';
 import { Skeleton, TableRowSkeleton, StatCardSkeleton, CVEBadgeSkeleton } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState/EmptyState';
 import ExportButton from '../components/ExportButton/ExportButton';
+import { sortVersions } from '../utils/semver';
 
 /* ============================================================================
    Types
@@ -377,13 +378,21 @@ function VersionsTab({
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  const sortedVersions = useMemo(() => {
+    if (!versions) return [];
+    // Sort descending by default
+    const sorted = sortVersions(versions.map(v => v.version));
+    // Reconstruct array preserving order
+    return sorted.map(sv => versions.find(v => v.version === sv)!);
+  }, [versions]);
+
   if (isError) return <div className="card"><ErrorState message="Failed to load versions" onRetry={onRetry} /></div>;
 
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
         <ExportButton
-          data={versions.map(v => ({
+          data={sortedVersions.map(v => ({
             version: v.version,
             release_date: v.release_date ? new Date(v.release_date).toLocaleDateString('en-CA') : '',
             breaking_changes_count: parseJsonField(v.breaking_changes).length,
@@ -417,13 +426,13 @@ function VersionsTab({
           <tbody className="divide-y divide-slate-50">
             {isLoading
               ? Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} columns={5} />)
-              : versions.map((v, idx) => {
+              : sortedVersions.map((v, idx) => {
                   const isOpen = expanded === v.version;
                   const breaking = parseJsonField(v.breaking_changes);
                   const deprecated = parseJsonField(v.deprecated_apis);
-                  const prevVersion = versions[idx + 1]?.version || '0.0.0';
+                  const prevVersion = sortedVersions[idx + 1]?.version || '0.0.0';
                   return (
-                    <>
+                    <React.Fragment key={v.version}>
                       <tr
                         key={v.version}
                         onClick={() => setExpanded(isOpen ? null : v.version)}
@@ -514,7 +523,7 @@ function VersionsTab({
                           </td>
                         </tr>
                       )}
-                    </>
+                    </React.Fragment>
                   );
                 })}
           </tbody>

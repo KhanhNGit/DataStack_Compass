@@ -3,6 +3,7 @@ import { GitCompareArrows, ArrowRight, Route, BarChart3, AlertTriangle, CheckCir
 import axios from 'axios';
 import { useToast } from '../components/Toast/ToastProvider';
 import ExportButton from '../components/ExportButton/ExportButton';
+import { sortVersions } from '../utils/semver';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 /* ─── Types & Mocks ───────────────────────────────────────────────────────── */
@@ -93,7 +94,7 @@ export default function AnalysisWorkspace() {
 function VersionDiffPanel() {
   const toast = useToast();
   const [tool, setTool] = useState('apache-kafka');
-  const versions = TOOL_VERSIONS[tool] || [];
+  const versions = sortVersions(TOOL_VERSIONS[tool] || [], false); // Ascending for diff
   const [fromVer, setFromVer] = useState(versions[0] || '');
   const [toVer, setToVer] = useState(versions[versions.length - 1] || '');
 
@@ -102,7 +103,7 @@ function VersionDiffPanel() {
 
   // Auto-update versions when tool changes
   useEffect(() => {
-    const v = TOOL_VERSIONS[tool] || [];
+    const v = sortVersions(TOOL_VERSIONS[tool] || [], false);
     setFromVer(v[0] || '');
     setToVer(v[v.length - 1] || '');
     setResult(null);
@@ -337,15 +338,18 @@ function StackComparePanel() {
     } catch (e) {
       toast.warning('Using mock data as API is unavailable');
       setTimeout(() => {
-        const mocks: StackCompareResult[] = selectedTools.map(t => ({
-          tool: t,
-          latestVersion: TOOL_VERSIONS[t]?.[TOOL_VERSIONS[t].length - 1] || '1.0.0',
-          license: 'Apache 2.0',
-          eolDate: t === 'apache-kafka' ? '2025-12-31' : t === 'apache-flink' ? '2025-06-30' : '2026-12-31',
-          criticalCVEs: t === 'apache-spark' ? 2 : t === 'apache-kafka' ? 1 : 0,
-          javaRequired: '11+',
-          scalaVersion: t === 'apache-spark' ? '2.12/2.13' : '-'
-        }));
+        const mocks: StackCompareResult[] = selectedTools.map(t => {
+          const sorted = sortVersions(TOOL_VERSIONS[t] || []);
+          return {
+            tool: t,
+            latestVersion: sorted[0] || '1.0.0',
+            license: 'Apache 2.0',
+            eolDate: t === 'apache-kafka' ? '2025-12-31' : t === 'apache-flink' ? '2025-06-30' : '2026-12-31',
+            criticalCVEs: t === 'apache-spark' ? 2 : t === 'apache-kafka' ? 1 : 0,
+            javaRequired: '11+',
+            scalaVersion: t === 'apache-spark' ? '2.12/2.13' : '-'
+          };
+        });
         setResults(mocks);
         setLoading(false);
       }, 800);
@@ -516,7 +520,7 @@ function StackComparePanel() {
 /* ─── Upgrade Path panel ──────────────────────────────────────────────────── */
 function UpgradePathPanel() {
   const [tool, setTool] = useState('apache-kafka');
-  const versions = TOOL_VERSIONS[tool] || [];
+  const versions = sortVersions(TOOL_VERSIONS[tool] || [], false); // Ascending
   const [currentVersion, setCurrentVersion] = useState(versions[0] || '');
   const [targetVersion, setTargetVersion] = useState(versions[versions.length - 1] || '');
   
@@ -525,7 +529,7 @@ function UpgradePathPanel() {
 
   // Auto-update versions when tool changes
   useEffect(() => {
-    const v = TOOL_VERSIONS[tool] || [];
+    const v = sortVersions(TOOL_VERSIONS[tool] || [], false);
     setCurrentVersion(v[0] || '');
     setTargetVersion(v[v.length - 1] || '');
     setSteps(null);
