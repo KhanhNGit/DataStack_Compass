@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { GitCompareArrows, ArrowRight, Route, BarChart3, AlertTriangle, CheckCircle, ShieldAlert, Download, X, Calendar, Lock } from 'lucide-react';
 import axios from 'axios';
 import { useToast } from '../components/Toast/ToastProvider';
+import ExportButton from '../components/ExportButton/ExportButton';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 /* ─── Types & Mocks ───────────────────────────────────────────────────────── */
@@ -562,31 +563,6 @@ function UpgradePathPanel() {
     }, 600);
   };
 
-  const handleExportChecklist = () => {
-    if (!steps) return;
-    let md = `# Migration Checklist: ${tool}\n\n`;
-    md += `**Upgrade Path:** ${currentVersion} -> ${targetVersion}\n\n`;
-    
-    steps.forEach((step, idx) => {
-      md += `## Step ${idx + 1}: ${step.fromVer} to ${step.toVer}\n`;
-      md += `### ⚠ Breaking Changes\n`;
-      step.breakingChanges.forEach((bc: string) => md += `- [ ] ${bc}\n`);
-      md += `\n### 🔒 CVEs Fixed\n`;
-      step.cvesFixed.forEach((cve: any) => md += `- ${cve.id} ${cve.isCritical ? '(Critical)' : ''}\n`);
-      md += `\n`;
-    });
-    
-    const blob = new Blob([md], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${tool}_migration_checklist.md`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
   const totalBreaking = steps?.reduce((acc, step) => acc + step.breakingChanges.length, 0) || 0;
   const totalCves = steps?.reduce((acc, step) => acc + step.cvesFixed.length, 0) || 0;
   const effort = totalBreaking > 5 ? 'High' : totalBreaking > 2 ? 'Medium' : 'Low';
@@ -715,13 +691,28 @@ function UpgradePathPanel() {
                 <div className="text-xs uppercase tracking-wider text-slate-400 font-medium">Est. Effort</div>
               </div>
             </div>
-            <button 
-              onClick={handleExportChecklist}
+            <ExportButton
+              data={steps}
+              columns={{}}
+              filename={`${tool}_migration_checklist`}
+              format="markdown"
+              label="Export Migration Checklist"
               className="w-full h-10 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium flex items-center justify-center gap-2 transition-colors border border-white/10"
-            >
-              <Download size={16} />
-              Export Migration Checklist
-            </button>
+              customFormatter={(data) => {
+                let md = `# Migration Checklist: ${tool}\n\n`;
+                md += `**Upgrade Path:** ${currentVersion} -> ${targetVersion}\n\n`;
+                
+                data.forEach((step, idx) => {
+                  md += `## Step ${idx + 1}: ${step.fromVer} to ${step.toVer}\n`;
+                  md += `### ⚠ Breaking Changes\n`;
+                  step.breakingChanges.forEach((bc: string) => md += `- [ ] ${bc}\n`);
+                  md += `\n### 🔒 CVEs Fixed\n`;
+                  step.cvesFixed.forEach((cve: any) => md += `- ${cve.id} ${cve.isCritical ? '(Critical)' : ''}\n`);
+                  md += `\n`;
+                });
+                return md;
+              }}
+            />
           </div>
         </div>
       )}

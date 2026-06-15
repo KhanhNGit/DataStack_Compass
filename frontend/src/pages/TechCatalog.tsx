@@ -17,6 +17,7 @@ import {
 import api from '../config/api';
 import { TableRowSkeleton } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState/EmptyState';
+import ExportButton from '../components/ExportButton/ExportButton';
 
 /* ============================================================================
    Types
@@ -182,14 +183,29 @@ export default function TechCatalog() {
   return (
     <div className="space-y-6">
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <Database size={24} className="text-indigo-500" />
-          Tech Catalog
-        </h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Track versions, CVEs, and lifecycle status of your Data Stack tools
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+            <Database size={24} className="text-indigo-500" />
+            Tech Catalog
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Track versions, CVEs, and lifecycle status of your Data Stack tools
+          </p>
+        </div>
+        <ExportButton
+          data={tools}
+          columns={{
+            tool_name: 'Tool Name',
+            latest_version: 'Latest Version',
+            lifecycle_status: 'Lifecycle Status',
+            eol_date: 'EOL Date',
+            total_cve_critical: 'Critical CVEs',
+          }}
+          filename="tech_catalog"
+          format="csv"
+          label="Export Catalog (CSV)"
+        />
       </div>
 
       {/* ── Filter bar ──────────────────────────────────────────────────── */}

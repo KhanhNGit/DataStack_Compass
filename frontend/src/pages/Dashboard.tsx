@@ -16,6 +16,7 @@ import {
 import api from '../config/api';
 import { Skeleton, StatCardSkeleton } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState/EmptyState';
+import ExportButton from '../components/ExportButton/ExportButton';
 
 /* ============================================================================
    API fetch helpers
@@ -356,12 +357,28 @@ export default function Dashboard() {
                 <ShieldAlert size={16} className="text-red-500" />
                 Critical CVEs
               </h2>
-              <Link
-                to="/catalog"
-                className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1 transition-colors"
-              >
-                View all CVEs <ArrowUpRight size={12} />
-              </Link>
+              <div className="flex items-center gap-4">
+                <ExportButton
+                  data={criticalCves}
+                  columns={{
+                    cve_id: 'CVE ID',
+                    tool_name: 'Tool',
+                    affected_versions: 'Affected Versions',
+                    cvss_score: 'CVSS Score',
+                    severity: 'Severity',
+                    published_at: 'Published Date',
+                  }}
+                  filename="critical_cves"
+                  format="csv"
+                  label="Export CVEs (CSV)"
+                />
+                <Link
+                  to="/catalog"
+                  className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1 transition-colors"
+                >
+                  View all CVEs <ArrowUpRight size={12} />
+                </Link>
+              </div>
             </div>
           </div>
 

@@ -22,6 +22,7 @@ import {
 import api from '../config/api';
 import { Skeleton, TableRowSkeleton, StatCardSkeleton, CVEBadgeSkeleton } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState/EmptyState';
+import ExportButton from '../components/ExportButton/ExportButton';
 
 /* ============================================================================
    Types
@@ -379,8 +380,30 @@ function VersionsTab({
   if (isError) return <div className="card"><ErrorState message="Failed to load versions" onRetry={onRetry} /></div>;
 
   return (
-    <div className="card overflow-hidden">
-      <div className="overflow-x-auto">
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <ExportButton
+          data={versions.map(v => ({
+            version: v.version,
+            release_date: v.release_date ? new Date(v.release_date).toLocaleDateString('en-CA') : '',
+            breaking_changes_count: parseJsonField(v.breaking_changes).length,
+            cve_count: v.cve_count,
+            features_count: 0
+          }))}
+          columns={{
+            version: 'Version',
+            release_date: 'Release Date',
+            breaking_changes_count: 'Breaking Changes Count',
+            cve_count: 'CVE Count',
+            features_count: 'Features Count'
+          }}
+          filename="versions"
+          format="csv"
+          label="Export Versions (CSV)"
+        />
+      </div>
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50/60">
@@ -503,6 +526,7 @@ function VersionsTab({
           <p className="text-sm text-slate-500 mt-3">No versions found</p>
         </div>
       )}
+      </div>
     </div>
   );
 }
