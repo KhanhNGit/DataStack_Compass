@@ -24,8 +24,15 @@ const TOOL_VERSIONS: Record<string, string[]> = {
   'starrocks': ['3.1.0', '3.2.0', '3.3.0']
 };
 
+type BreakingChange = {
+  text: string;
+  category: string;
+  impact: string;
+  action_required: boolean;
+};
+
 type VersionDiffResult = {
-  breakingChanges: string[];
+  breakingChanges: BreakingChange[];
   resolvedCVEs: string[];
   newCVEs: { id: string; cvss: number }[];
   configChanges: { key: string; type: 'add' | 'remove' | 'modify'; oldVal?: string; newVal?: string; impact_level?: string }[];
@@ -100,6 +107,11 @@ function VersionDiffPanel() {
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<VersionDiffResult | null>(null);
+  const [bcCategories, setBcCategories] = useState<string[]>([]);
+
+  const toggleCategory = (cat: string) => {
+    setBcCategories(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
+  };
 
   // Auto-update versions when tool changes
   useEffect(() => {
@@ -131,7 +143,10 @@ function VersionDiffPanel() {
       // Mock result as fallback
       setTimeout(() => {
         setResult({
-          breakingChanges: ['Removed deprecated Producer API', 'Changed default partitioner'],
+          breakingChanges: [
+            { text: 'Removed deprecated Producer API', category: 'REMOVAL', impact: 'High', action_required: true },
+            { text: 'Changed default partitioner', category: 'BEHAVIOR_CHANGE', impact: 'Low', action_required: false }
+          ],
           resolvedCVEs: ['CVE-2023-44487', 'CVE-2023-34040'],
           newCVEs: [{ id: 'CVE-2024-21287', cvss: 8.5 }, { id: 'CVE-2024-21288', cvss: 6.2 }],
           configChanges: [
@@ -208,16 +223,58 @@ function VersionDiffPanel() {
           {/* Left Column */}
           <div className="space-y-6">
             <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
-              <h3 className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                <AlertTriangle size={16} className="text-rose-500" />
-                New Breaking Changes
-              </h3>
-              <ul className="space-y-2">
-                {result.breakingChanges.map((bc, i) => (
-                  <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
-                    <span className="text-rose-500 mt-0.5">•</span> {bc}
-                  </li>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                  <AlertTriangle size={16} className="text-rose-500" />
+                  New Breaking Changes
+                </h3>
+              </div>
+              
+              {/* Category Filter */}
+              {result.breakingChanges.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-4 pb-4 border-b border-slate-100">
+                  {Array.from(new Set(result.breakingChanges.map(bc => bc.category))).map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => toggleCategory(cat)}
+                      className={`text-xs px-2 py-1 rounded-md transition-colors ${
+                        bcCategories.includes(cat) 
+                          ? 'bg-indigo-100 text-indigo-700 font-medium border border-indigo-200' 
+                          : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <ul className="space-y-3">
+                {result.breakingChanges
+                  .filter(bc => bcCategories.length === 0 || bcCategories.includes(bc.category))
+                  .sort((a, b) => {
+                    const impactScore = { High: 3, Medium: 2, Low: 1 };
+                    return (impactScore[b.impact as keyof typeof impactScore] || 0) - (impactScore[a.impact as keyof typeof impactScore] || 0);
+                  })
+                  .map((bc, i) => (
+                    <li key={i} className="text-sm text-slate-600 flex flex-col gap-1.5 p-2 rounded hover:bg-slate-50">
+                      <div className="flex items-start gap-2">
+                        <span className="text-rose-500 mt-0.5">•</span> 
+                        <span>{bc.text}</span>
+                      </div>
+                      <div className="flex gap-2 ml-4">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${bc.impact === 'High' ? 'bg-rose-100 text-rose-700' : bc.impact === 'Medium' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>{bc.impact} Impact</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">{bc.category}</span>
+                      </div>
+                    </li>
                 ))}
+                {result.breakingChanges.length === 0 && (
+                  <div className="text-slate-500 italic font-sans text-sm">No breaking changes detected.</div>
+                )}
+                {result.breakingChanges.length > 0 && 
+                 result.breakingChanges.filter(bc => bcCategories.length === 0 || bcCategories.includes(bc.category)).length === 0 && (
+                  <div className="text-slate-500 italic font-sans text-sm">No breaking changes match selected categories.</div>
+                )}
               </ul>
             </div>
 
@@ -550,10 +607,10 @@ function UpgradePathPanel() {
           fromVer: versions[i],
           toVer: versions[i+1],
           breakingChanges: i === startIndex ? [
-            `KIP-792: Changed default value of log.retention.bytes`,
-            `KIP-811: Deprecated GroupMetadata`
+            { text: `KIP-792: Changed default value of log.retention.bytes`, category: 'CONFIG_CHANGE', impact: 'Low', action_required: false },
+            { text: `KIP-811: Deprecated GroupMetadata`, category: 'API_CHANGE', impact: 'Medium', action_required: true }
           ] : [
-            `Minor configuration changes`
+            { text: `Minor configuration changes`, category: 'CONFIG_CHANGE', impact: 'Low', action_required: false }
           ],
           cvesFixed: [
             { id: `CVE-202${i}-1234`, isCritical: i % 2 === 0 },
@@ -650,10 +707,17 @@ function UpgradePathPanel() {
                           <AlertTriangle size={14} />
                           {step.breakingChanges.length} Breaking Changes
                         </div>
-                        <ul className="text-slate-600 space-y-1 text-xs">
-                          {step.breakingChanges.map((bc: string, i: number) => (
-                            <li key={i} className="flex items-start gap-1.5">
-                              <span className="text-rose-400 mt-0.5">•</span> {bc}
+                        <ul className="text-slate-600 space-y-2 text-xs">
+                          {step.breakingChanges.map((bc: BreakingChange, i: number) => (
+                            <li key={i} className="flex flex-col gap-1 bg-slate-50 p-1.5 rounded">
+                              <div className="flex items-start gap-1.5">
+                                <span className="text-rose-400 mt-0.5">•</span> 
+                                <span>{bc.text}</span>
+                              </div>
+                              <div className="flex gap-1.5 ml-3">
+                                <span className={`text-[9px] px-1 py-0.5 rounded font-medium ${bc.impact === 'High' ? 'bg-rose-100 text-rose-700' : bc.impact === 'Medium' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'}`}>{bc.impact}</span>
+                                <span className="text-[9px] px-1 py-0.5 rounded font-medium bg-indigo-50 text-indigo-700">{bc.category}</span>
+                              </div>
                             </li>
                           ))}
                         </ul>
@@ -709,7 +773,7 @@ function UpgradePathPanel() {
                 data.forEach((step, idx) => {
                   md += `## Step ${idx + 1}: ${step.fromVer} to ${step.toVer}\n`;
                   md += `### ⚠ Breaking Changes\n`;
-                  step.breakingChanges.forEach((bc: string) => md += `- [ ] ${bc}\n`);
+                  step.breakingChanges.forEach((bc: BreakingChange) => md += `- [ ] **[${bc.impact}] [${bc.category}]** ${bc.text}\n`);
                   md += `\n### 🔒 CVEs Fixed\n`;
                   step.cvesFixed.forEach((cve: any) => md += `- ${cve.id} ${cve.isCritical ? '(Critical)' : ''}\n`);
                   md += `\n`;

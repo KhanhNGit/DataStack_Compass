@@ -209,7 +209,7 @@ async def recent_breaking_changes(
         params.append(tool_name)
 
     sql = f"""
-        SELECT tool_name, version, release_date, breaking_changes
+        SELECT tool_name, version, release_date, breaking_changes, breaking_changes_enriched
         FROM {_SILVER_RELEASES}
         {where}
         ORDER BY release_date DESC
@@ -267,7 +267,7 @@ async def version_diff(
 
     # ── Validate versions exist ──────────────────────────────────────────
     check_sql = f"""
-        SELECT version, release_date, breaking_changes, deprecated_apis
+        SELECT version, release_date, breaking_changes, breaking_changes_enriched, deprecated_apis
         FROM {_SILVER_RELEASES}
         WHERE tool_name = %s AND version IN (%s, %s)
     """
@@ -291,7 +291,7 @@ async def version_diff(
 
     # ── All intermediate releases (from, to] ─────────────────────────────
     all_releases_sql = f"""
-        SELECT version, release_date, breaking_changes, deprecated_apis
+        SELECT version, release_date, breaking_changes, breaking_changes_enriched, deprecated_apis
         FROM {_SILVER_RELEASES}
         WHERE tool_name = %s
         ORDER BY version ASC
@@ -308,14 +308,22 @@ async def version_diff(
     ]
 
     # ── Tổng hợp breaking changes + deprecated APIs ─────────────────────
-    all_breaking: List[str] = []
+    all_breaking: List[Any] = []
     all_deprecated: List[str] = []
     new_features_count = 0
     bug_fixes_count = 0
 
     for rel in intermediate_releases:
-        bc = _parse_json_field(rel.get("breaking_changes"))
-        all_breaking.extend(bc)
+        bc_enriched = _parse_json_field(rel.get("breaking_changes_enriched"))
+        if bc_enriched:
+            all_breaking.extend(bc_enriched)
+        else:
+            bc = _parse_json_field(rel.get("breaking_changes"))
+            # convert string to mock enriched
+            all_breaking.extend([
+                {"text": b, "category": "UNCATEGORIZED", "impact": "Low", "action_required": False}
+                for b in bc
+            ])
 
         dep = _parse_json_field(rel.get("deprecated_apis"))
         all_deprecated.extend(dep)
@@ -666,7 +674,7 @@ async def upgrade_path(
 
     # ── Lấy tất cả releases cho tool ────────────────────────────────────
     releases_sql = f"""
-        SELECT version, release_date, breaking_changes, deprecated_apis
+        SELECT version, release_date, breaking_changes, breaking_changes_enriched, deprecated_apis
         FROM {_SILVER_RELEASES}
         WHERE tool_name = %s
     """
@@ -720,7 +728,13 @@ async def upgrade_path(
         ver_tuple = _parse_semver_tuple(ver)
 
         # Breaking changes cho step này
-        step_breaking = _parse_json_field(release.get("breaking_changes"))
+        step_breaking = _parse_json_field(release.get("breaking_changes_enriched"))
+        if not step_breaking:
+            flat_bc = _parse_json_field(release.get("breaking_changes"))
+            step_breaking = [
+                {"text": b, "category": "UNCATEGORIZED", "impact": "Low", "action_required": False}
+                for b in flat_bc
+            ]
         step_deprecated = _parse_json_field(release.get("deprecated_apis"))
 
         if ver != current:

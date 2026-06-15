@@ -41,6 +41,7 @@ from pyspark.sql.types import (
     StructField,
     StructType,
     TimestampType,
+    BooleanType,
 )
 
 logger = logging.getLogger(__name__)
@@ -78,6 +79,14 @@ silver_releases = StructType([
     StructField("release_date", DateType(), nullable=True),
     StructField("issues", ArrayType(_issue_struct), nullable=True),
     StructField("breaking_changes", ArrayType(StringType()), nullable=True),
+    StructField("breaking_changes_enriched", ArrayType(
+        StructType([
+            StructField("text", StringType(), nullable=False),
+            StructField("category", StringType(), nullable=False),
+            StructField("impact", StringType(), nullable=False),
+            StructField("action_required", BooleanType(), nullable=False),
+        ])
+    ), nullable=True),
     StructField("deprecated_apis", ArrayType(StringType()), nullable=True),
     StructField("processed_at", TimestampType(), nullable=False),
 ])

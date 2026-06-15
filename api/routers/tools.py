@@ -269,7 +269,7 @@ async def get_tool_detail(tool_name: str, db=Depends(get_db)):
 
     # ── Recent breaking changes (5 mới nhất) ─────────────────────────────
     breaking_sql = f"""
-        SELECT version, release_date, breaking_changes
+        SELECT version, release_date, breaking_changes, breaking_changes_enriched
         FROM {_SILVER_RELEASES}
         WHERE tool_name = %s
           AND breaking_changes IS NOT NULL
@@ -344,6 +344,7 @@ async def list_versions(
             r.version,
             r.release_date,
             r.breaking_changes,
+            r.breaking_changes_enriched,
             r.deprecated_apis,
             CASE
                 WHEN r.breaking_changes IS NOT NULL THEN TRUE
@@ -397,7 +398,7 @@ async def get_version_detail(
     # ── Release detail ───────────────────────────────────────────────────
     release_sql = f"""
         SELECT tool_name, version, release_date,
-               breaking_changes, deprecated_apis, processed_at
+               breaking_changes, breaking_changes_enriched, deprecated_apis, processed_at
         FROM {_SILVER_RELEASES}
         WHERE tool_name = %s AND version = %s
     """

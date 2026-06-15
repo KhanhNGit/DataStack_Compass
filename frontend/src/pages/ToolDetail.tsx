@@ -45,6 +45,7 @@ interface VersionRow {
   version: string;
   release_date: string | null;
   breaking_changes: string[] | string | null;
+  breaking_changes_enriched?: any[] | string | null;
   deprecated_apis: string[] | string | null;
   has_breaking_changes: boolean;
   cve_count: number;
@@ -428,7 +429,17 @@ function VersionsTab({
               ? Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} columns={5} />)
               : sortedVersions.map((v, idx) => {
                   const isOpen = expanded === v.version;
-                  const breaking = parseJsonField(v.breaking_changes);
+                  let breakingEnriched = parseJsonField(v.breaking_changes_enriched);
+                  const breakingCount = breakingEnriched.length > 0 ? breakingEnriched.length : parseJsonField(v.breaking_changes).length;
+                  if (breakingEnriched.length === 0) {
+                    const flatBc = parseJsonField(v.breaking_changes);
+                    breakingEnriched = flatBc.map(b => ({ text: b, category: 'UNCATEGORIZED', impact: 'Low', action_required: false }));
+                  }
+                  const breakingGroups = breakingEnriched.reduce((acc: any, bc: any) => {
+                    acc[bc.category] = acc[bc.category] || [];
+                    acc[bc.category].push(bc);
+                    return acc;
+                  }, {});
                   const deprecated = parseJsonField(v.deprecated_apis);
                   const prevVersion = sortedVersions[idx + 1]?.version || '0.0.0';
                   return (
@@ -458,10 +469,10 @@ function VersionsTab({
                             : '—'}
                         </td>
                         <td className="py-3 px-4 text-center">
-                          {breaking.length > 0 ? (
+                          {breakingCount > 0 ? (
                             <span className="badge badge-high">
                               <AlertTriangle size={10} className="mr-1" />
-                              {breaking.length}
+                              {breakingCount}
                             </span>
                           ) : (
                             <Check size={14} className="mx-auto text-emerald-400" />
@@ -488,14 +499,24 @@ function VersionsTab({
                                   <AlertTriangle size={12} className="text-amber-500" />
                                   Breaking Changes
                                 </h4>
-                                {breaking.length > 0 ? (
-                                  <ul className="space-y-1">
-                                    {breaking.map((bc, i) => (
-                                      <li key={i} className="text-slate-600 pl-3 border-l-2 border-amber-300">
-                                        {bc}
-                                      </li>
+                                {breakingCount > 0 ? (
+                                  <div className="space-y-3">
+                                    {Object.entries(breakingGroups).map(([cat, items]: [string, any]) => (
+                                      <div key={cat}>
+                                        <div className="text-xs font-semibold text-slate-600 mb-1">{cat}</div>
+                                        <ul className="space-y-1">
+                                          {items.map((bc: any, i: number) => (
+                                            <li key={i} className="text-slate-600 pl-3 border-l-2 flex flex-col gap-0.5" style={{ borderColor: bc.impact === 'High' ? '#fca5a5' : bc.impact === 'Medium' ? '#fcd34d' : '#e2e8f0' }}>
+                                              <span>{bc.text}</span>
+                                              {bc.impact !== 'Low' && (
+                                                <span className={`text-[9px] px-1 py-0.5 rounded-sm self-start ${bc.impact === 'High' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>{bc.impact} Impact</span>
+                                              )}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
                                     ))}
-                                  </ul>
+                                  </div>
                                 ) : (
                                   <p className="text-slate-400 italic">None</p>
                                 )}

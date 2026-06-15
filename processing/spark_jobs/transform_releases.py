@@ -41,6 +41,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from processing.spark_utils.session import get_spark_session
+from processing.spark_jobs.classify_breaking_changes import classify_breaking_change_udf
 from storage.delta.schemas import SCHEMAS
 
 # =============================================================================
@@ -459,6 +460,13 @@ def transform_releases(
         .withColumn("breaking_changes", udf_extract_breaking(F.col("_body")))
         .withColumn("deprecated_apis", udf_extract_deprecated(F.col("_body")))
         .withColumn(
+            "breaking_changes_enriched",
+            F.when(
+                F.col("breaking_changes").isNotNull(),
+                F.transform(F.col("breaking_changes"), classify_breaking_change_udf)
+            ).otherwise(F.lit(None))
+        )
+        .withColumn(
             "release_date",
             F.to_date(F.to_timestamp(F.col("_published_at"))),
         )
@@ -475,6 +483,7 @@ def transform_releases(
         F.col("release_date"),
         F.lit(None).cast(SCHEMAS["silver_releases"]["issues"].dataType).alias("issues"),
         F.col("breaking_changes"),
+        F.col("breaking_changes_enriched"),
         F.col("deprecated_apis"),
         F.lit(now).cast("timestamp").alias("processed_at"),
     )
@@ -498,6 +507,7 @@ def transform_releases(
                 "release_date": "source.release_date",
                 "issues": "source.issues",
                 "breaking_changes": "source.breaking_changes",
+                "breaking_changes_enriched": "source.breaking_changes_enriched",
                 "deprecated_apis": "source.deprecated_apis",
                 "processed_at": "source.processed_at",
             })

@@ -171,6 +171,12 @@ class IssueItem(BaseModel):
     url: Optional[str] = Field(None, description="Link tới issue tracker")
 
 
+class BreakingChangeEnriched(BaseModel):
+    text: str
+    category: str
+    impact: str
+    action_required: bool
+
 class ReleaseDetail(BaseModel):
     """Silver layer: chi tiết một release version.
 
@@ -191,6 +197,9 @@ class ReleaseDetail(BaseModel):
     )
     breaking_changes: Optional[List[str]] = Field(
         None, description="Danh sách breaking changes"
+    )
+    breaking_changes_enriched: Optional[List[BreakingChangeEnriched]] = Field(
+        None, description="Danh sách breaking changes đã được phân loại"
     )
     deprecated_apis: Optional[List[str]] = Field(
         None, description="Danh sách deprecated APIs"
