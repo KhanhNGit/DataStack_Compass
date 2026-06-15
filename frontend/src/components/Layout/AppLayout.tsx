@@ -14,6 +14,7 @@ import {
   Menu,
   X,
   Loader2,
+  Tag,
 } from 'lucide-react';
 import api from '../../config/api';
 import { usePreferences } from '../../hooks/usePreferences';
@@ -42,6 +43,7 @@ export default function AppLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
   const navigate = useNavigate();
   const searchRef = useRef<HTMLDivElement>(null);
 
@@ -73,14 +75,19 @@ export default function AppLayout() {
     queryKey: ['globalSearch', debouncedQuery],
     queryFn: async () => {
       if (!debouncedQuery) return [];
-      const res = await api.get('/api/v1/tools/search', {
-        params: { q: debouncedQuery },
+      const res = await api.get('/api/v1/search', {
+        params: { q: debouncedQuery, type: 'all' },
       });
-      return res.data?.data ?? [];
+      return res.data?.data?.results ?? [];
     },
     enabled: debouncedQuery.length >= 1,
     staleTime: 30_000,
   });
+
+  // Reset selected index when results change
+  useEffect(() => {
+    setSelectedIndex(-1);
+  }, [searchResults]);
 
   // ── Show dropdown khi có results ──────────────────────────────────────
   useEffect(() => {
@@ -111,13 +118,41 @@ export default function AppLayout() {
   };
 
   const handleSelectResult = useCallback(
-    (toolName: string) => {
+    (item: any) => {
       setSearchQuery('');
       setShowDropdown(false);
-      navigate(`/catalog/${toolName}`);
+      setSelectedIndex(-1);
+      if (item.result_type === 'tool') {
+        navigate(`/catalog/${item.tool_name}`);
+      } else if (item.result_type === 'cve') {
+        navigate(`/catalog/${item.tool_name}?tab=cves&highlight=${item.cve_id}`);
+      } else if (item.result_type === 'version') {
+        navigate(`/catalog/${item.tool_name}?tab=versions&highlight=${item.version}`);
+      }
     },
     [navigate],
   );
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showDropdown || !searchResults?.length) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev < searchResults.length - 1 ? prev + 1 : prev));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIndex((prev) => (prev > 0 ? prev - 1 : 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedIndex >= 0 && selectedIndex < searchResults.length) {
+        handleSelectResult(searchResults[selectedIndex]);
+      } else {
+        handleSearchSubmit(e as any);
+      }
+    } else if (e.key === 'Escape') {
+      setShowDropdown(false);
+    }
+  };
 
   const sidebarWidth = collapsed ? 'w-16' : 'w-60';
 
@@ -239,6 +274,7 @@ export default function AppLayout() {
                   onFocus={() => {
                     if (searchResults?.length) setShowDropdown(true);
                   }}
+                  onKeyDown={handleKeyDown}
                   className="
                     w-full h-9 pl-9 pr-8 rounded-lg
                     bg-slate-50 border border-slate-200
@@ -268,27 +304,68 @@ export default function AppLayout() {
                 className="
                   absolute top-full left-0 right-0 mt-1.5 z-50
                   bg-white border border-slate-200 rounded-xl shadow-lg
-                  max-h-72 overflow-y-auto
+                  max-h-[32rem] overflow-y-auto py-2
                 "
               >
-                {(searchResults ?? []).map((item: any) => (
-                  <button
-                    key={`${item.tool_name}-${item.latest_version}`}
-                    onClick={() => handleSelectResult(item.tool_name)}
-                    className="
-                      w-full flex items-center justify-between px-4 py-2.5
-                      text-left hover:bg-slate-50 transition-colors
-                      border-b border-slate-50 last:border-0
-                    "
-                  >
-                    <span className="text-sm font-medium text-slate-800">
-                      {item.tool_name}
-                    </span>
-                    <span className="text-xs font-mono text-slate-400">
-                      v{item.latest_version}
-                    </span>
-                  </button>
-                ))}
+                {(searchResults ?? []).map((item: any, index: number) => {
+                  const isSelected = index === selectedIndex;
+                  const prevItem = index > 0 ? searchResults[index - 1] : null;
+                  const showHeader = !prevItem || prevItem.result_type !== item.result_type;
+
+                  let Icon = Database;
+                  let headerText = 'Tools';
+                  if (item.result_type === 'cve') {
+                    Icon = Shield;
+                    headerText = 'CVEs';
+                  } else if (item.result_type === 'version') {
+                    Icon = Tag;
+                    headerText = 'Versions';
+                  }
+
+                  return (
+                    <div key={`${item.result_type}-${item.display_title}`}>
+                      {showHeader && (
+                        <div className="px-4 py-1.5 mt-1 first:mt-0 bg-slate-50/80 sticky top-0 backdrop-blur-sm z-10 border-y border-slate-100 first:border-t-0">
+                          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            {headerText}
+                          </span>
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleSelectResult(item)}
+                        className={`
+                          w-full flex items-start gap-3 px-4 py-2.5 text-left transition-colors
+                          ${isSelected ? 'bg-indigo-50/50' : 'hover:bg-slate-50'}
+                        `}
+                      >
+                        <div className="mt-0.5 flex-shrink-0 text-slate-400">
+                          <Icon size={16} className={item.result_type === 'cve' && (item.severity === 'Critical' || item.severity === 'High') ? 'text-red-400' : ''} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-slate-800 truncate">
+                              {item.display_title}
+                            </span>
+                            {item.result_type === 'cve' && (
+                              <span className={`
+                                px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide
+                                ${item.severity === 'Critical' ? 'bg-red-100 text-red-700' : 
+                                  item.severity === 'High' ? 'bg-orange-100 text-orange-700' : 
+                                  'bg-slate-100 text-slate-600'}
+                              `}>
+                                {item.severity}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-500 truncate mt-0.5">
+                            {item.display_subtitle}
+                          </div>
+                        </div>
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
