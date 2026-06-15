@@ -191,6 +191,81 @@ async def risk_matrix(db=Depends(get_db)):
 
 
 @router.get(
+    "/dependency-graph",
+    summary="Dependency Graph data",
+    response_model=BaseResponse,
+)
+async def dependency_graph(db=Depends(get_db)):
+    cache_key = _cache_key("dependency_graph")
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return BaseResponse(data=cached, meta={"cached": True})
+
+    # Nodes
+    nodes_sql = f"""
+        SELECT
+            g.tool_name AS id,
+            g.latest_version AS version,
+            g.total_cve_critical AS cve_critical,
+            CASE
+                WHEN g.eol_date IS NOT NULL AND g.eol_date < CURRENT_DATE() THEN 'EOL'
+                WHEN g.eol_date IS NOT NULL AND g.eol_date < DATE_ADD(CURRENT_DATE(), INTERVAL 90 DAY) THEN 'Maintenance'
+                ELSE 'Active'
+            END AS lifecycle
+        FROM {_GOLD_SUMMARY} g
+    """
+    
+    # Edges
+    edges_sql = f"""
+        SELECT
+            c.tool_name AS from_tool,
+            c.dependencies
+        FROM {_SILVER_COMPAT} c
+        JOIN {_GOLD_SUMMARY} g ON c.tool_name = g.tool_name AND c.version = g.latest_version
+    """
+
+    with db.cursor() as cursor:
+        cursor.execute(nodes_sql)
+        nodes = cursor.fetchall()
+        
+        cursor.execute(edges_sql)
+        edges_raw = cursor.fetchall()
+
+    edges = []
+    valid_nodes = {n["id"] for n in nodes}
+
+    for row in edges_raw:
+        from_tool = row["from_tool"]
+        deps = row.get("dependencies")
+        if not deps:
+            continue
+            
+        if isinstance(deps, str):
+            try:
+                deps = json.loads(deps)
+            except Exception:
+                deps = {}
+                
+        if isinstance(deps, dict):
+            for to_tool, ver_req in deps.items():
+                if to_tool in valid_nodes:
+                    edges.append({
+                        "from": from_tool,
+                        "to": to_tool,
+                        "version_required": ver_req,
+                        "type": "requires"
+                    })
+
+    data = {
+        "nodes": nodes,
+        "edges": edges
+    }
+
+    _cache_set(cache_key, data)
+    return BaseResponse(data=data)
+
+
+@router.get(
     "/breaking-changes",
     summary="Breaking changes gần đây",
     response_model=BaseResponse,

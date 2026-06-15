@@ -7,6 +7,7 @@ import TechCatalog from './pages/TechCatalog';
 import ToolDetail from './pages/ToolDetail';
 import AnalysisWorkspace from './pages/AnalysisWorkspace';
 import GovernanceKnowledge from './pages/GovernanceKnowledge';
+import DependencyGraph from './pages/DependencyGraph';
 import { ToastProvider } from './components/Toast/ToastProvider';
 
 /* ─── React Query client ──────────────────────────────────────────────────── */
@@ -30,6 +31,7 @@ export default function App() {
             <Route element={<AppLayout />}>
               <Route index element={<Dashboard />} />
               <Route path="catalog" element={<TechCatalog />} />
+              <Route path="catalog/dependency-graph" element={<DependencyGraph />} />
               <Route path="catalog/:toolName" element={<ToolDetail />} />
               <Route path="analysis" element={<AnalysisWorkspace />} />
               <Route path="governance" element={<GovernanceKnowledge />} />

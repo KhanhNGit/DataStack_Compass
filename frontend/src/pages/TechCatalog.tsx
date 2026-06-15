@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Database,
@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Shield,
   Calendar,
+  Network,
 } from 'lucide-react';
 import api from '../config/api';
 import { TableRowSkeleton } from '../components/Skeleton';
@@ -193,19 +194,28 @@ export default function TechCatalog() {
             Track versions, CVEs, and lifecycle status of your Data Stack tools
           </p>
         </div>
-        <ExportButton
-          data={tools}
-          columns={{
-            tool_name: 'Tool Name',
-            latest_version: 'Latest Version',
-            lifecycle_status: 'Lifecycle Status',
-            eol_date: 'EOL Date',
-            total_cve_critical: 'Critical CVEs',
-          }}
-          filename="tech_catalog"
-          format="csv"
-          label="Export Catalog (CSV)"
-        />
+        <div className="flex items-center gap-3">
+          <Link
+            to="/catalog/dependency-graph"
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-white border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+          >
+            <Network size={16} className="text-indigo-500" />
+            Dependency Graph
+          </Link>
+          <ExportButton
+            data={tools}
+            columns={{
+              tool_name: 'Tool Name',
+              latest_version: 'Latest Version',
+              lifecycle_status: 'Lifecycle Status',
+              eol_date: 'EOL Date',
+              total_cve_critical: 'Critical CVEs',
+            }}
+            filename="tech_catalog"
+            format="csv"
+            label="Export Catalog (CSV)"
+          />
+        </div>
       </div>
 
       {/* ── Filter bar ──────────────────────────────────────────────────── */}
