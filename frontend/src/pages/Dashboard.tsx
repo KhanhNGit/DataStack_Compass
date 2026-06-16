@@ -10,7 +10,6 @@ import {
   ExternalLink,
   AlertTriangle,
   TrendingUp,
-  TrendingUp,
   CalendarClock,
 } from 'lucide-react';
 import api from '../config/api';
@@ -113,7 +112,7 @@ function SeverityBadge({ severity }: { severity: string }) {
 interface StatCardProps {
   label: string;
   value: string | number;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
+  icon: React.ComponentType<{ size?: number; className?: string; style?: React.CSSProperties; color?: string }>;
   color: string;
   bg: string;
   subtitle?: string;
@@ -157,7 +156,7 @@ interface EolItemProps {
   lifecycle_status?: string;
 }
 
-function EolTimelineItem({ tool_name, eol_date }: EolItemProps) {
+function EolTimelineItem({ tool_name, eol_date, latest_version }: EolItemProps) {
   const now = Date.now();
   const eol = new Date(eol_date).getTime();
   // Tính từ 180 ngày trước EOL tới EOL
@@ -559,15 +558,15 @@ export default function Dashboard() {
                 {assetRiskData.map((asset: any, idx: number) => {
                   const critical = asset.critical_cves_count || 0;
                   const high = asset.high_cves_count || 0;
-                  
+
                   let daysToEol = Infinity;
                   if (asset.eol_date) {
                     daysToEol = (new Date(asset.eol_date).getTime() - Date.now()) / (24 * 60 * 60 * 1000);
                   }
-                  
+
                   let riskLevel = 'LOW';
                   let rowColor: string;
-                  
+
                   if (critical >= 1 || daysToEol <= 0) {
                     riskLevel = 'HIGH';
                     rowColor = 'bg-red-50 hover:bg-red-100/50';

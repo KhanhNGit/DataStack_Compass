@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { GitCompareArrows, ArrowRight, Route, BarChart3, AlertTriangle, CheckCircle, ShieldAlert, Download, X, Calendar, Lock } from 'lucide-react';
+import { GitCompareArrows, ArrowRight, Route, BarChart3, AlertTriangle, CheckCircle, ShieldAlert, X, Calendar, Lock } from 'lucide-react';
 import axios from 'axios';
 import { useToast } from '../components/Toast/ToastProvider';
 import ExportButton from '../components/ExportButton/ExportButton';
@@ -105,6 +105,13 @@ function VersionDiffPanel() {
   const versions = sortVersions(TOOL_VERSIONS[tool] || [], false); // Ascending for diff
   const [fromVer, setFromVer] = useState(versions[0] || '');
   const [toVer, setToVer] = useState(versions[versions.length - 1] || '');
+
+  const [result, setResult] = useState<VersionDiffResult | null>(null);
+  const [bcCategories, setBcCategories] = useState<string[]>([]);
+
+  const toggleCategory = (cat: string) => {
+    setBcCategories(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
+  };
 
   const compareMutation = useMutation({
     mutationFn: async () => {
@@ -355,6 +362,20 @@ function StackComparePanel() {
   const toast = useToast();
   const [selectedTools, setSelectedTools] = useState<string[]>(['apache-kafka', 'apache-spark']);
   const [inputValue, setInputValue] = useState('');
+  const [results, setResults] = useState<StackCompareResult[] | null>(null);
+
+  const availableTools = Object.keys(TOOL_VERSIONS).filter(t => !selectedTools.includes(t));
+
+  const addTool = (t: string) => {
+    if (!selectedTools.includes(t) && selectedTools.length < 5) {
+      setSelectedTools(prev => [...prev, t]);
+      setInputValue('');
+    }
+  };
+
+  const removeTool = (t: string) => {
+    setSelectedTools(prev => prev.filter(tool => tool !== t));
+  };
   
   const compareMutation = useMutation({
     mutationFn: async () => {
@@ -765,7 +786,6 @@ function UpgradePathPanel() {
 
 /* ─── EOL Impact Assessment panel ─────────────────────────────────────────── */
 function EolAssessmentPanel() {
-  const toast = useToast();
   const { data = [], isLoading: loading } = useQuery({
     queryKey: ['eolTimeline'],
     queryFn: async () => {
@@ -781,24 +801,7 @@ function EolAssessmentPanel() {
     return '#ef4444'; // Red
   };
 
-  const handleExportFormatter = (dataList: any[]) => {
-    const rows = [
-      ['Tool', 'Current Version', 'EOL Date', 'Days Remaining', 'Recommended Action']
-    ];
-    
-    dataList.forEach(item => {
-      const action = item.days_remaining < 30 ? 'Immediate Upgrade Required' : 
-                     item.days_remaining < 90 ? 'Plan Upgrade Soon' : 'Monitor';
-      rows.push([
-        item.tool_name, 
-        item.version_in_use, 
-        item.eol_date ? new Date(item.eol_date).toISOString().split('T')[0] : 'N/A', 
-        item.days_remaining?.toString() || '0', 
-        action
-      ]);
-    });
-    
-  };
+
 
   return (
     <div className="card p-6 space-y-6 bg-white rounded-xl shadow-sm border border-slate-200">

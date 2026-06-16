@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -18,9 +18,10 @@ import {
   Check,
   X as XIcon,
   Settings,
+  Layers,
 } from 'lucide-react';
 import api from '../config/api';
-import { Skeleton, TableRowSkeleton, StatCardSkeleton } from '../components/Skeleton';
+import { Skeleton, TableRowSkeleton } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState/EmptyState';
 import ExportButton from '../components/ExportButton/ExportButton';
 import { sortVersions } from '../utils/semver';
@@ -85,7 +86,7 @@ const LIFECYCLE_BADGE: Record<string, { color: string; bg: string }> = {
    Utilities
    ============================================================================ */
 
-function parseJsonField(value: any): string[] {
+function parseJsonField(value: any): any[] {
   if (!value) return [];
   if (Array.isArray(value)) return value;
   if (typeof value === 'string') {
@@ -225,56 +226,40 @@ export default function ToolDetail() {
 
       {/* ── Header stats ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {isLoadingSummary ? (
-          <StatCardSkeleton />
-        ) : (
-          <div className="card p-4">
-            <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">Status</div>
-            <div className="font-semibold text-slate-900">
-              <span
-                className="inline-flex items-center px-2 py-0.5 rounded-full text-xs"
-                style={{ background: lcBadge.bg, color: lcBadge.color }}
-              >
-                {summary.lifecycle_status}
-              </span>
-            </div>
+        <div className="card p-4">
+          <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">Status</div>
+          <div className="font-semibold text-slate-900">
+            <span
+              className="inline-flex items-center px-2 py-0.5 rounded-full text-xs"
+              style={{ background: lcBadge.bg, color: lcBadge.color }}
+            >
+              {summary.lifecycle_status}
+            </span>
           </div>
-        )}
+        </div>
 
-        {isLoadingSummary ? (
-          <StatCardSkeleton />
-        ) : (
-          <div className="card p-4">
-            <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">EOL Date</div>
-            <div className="font-semibold text-slate-900 flex items-center gap-2">
-              <Calendar size={14} className="text-slate-400" />
-              {summary.eol_date ? new Date(summary.eol_date).toLocaleDateString('en-CA') : '—'}
-            </div>
+        <div className="card p-4">
+          <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">EOL Date</div>
+          <div className="font-semibold text-slate-900 flex items-center gap-2">
+            <Calendar size={14} className="text-slate-400" />
+            {summary.eol_date ? new Date(summary.eol_date).toLocaleDateString('en-CA') : '—'}
           </div>
-        )}
+        </div>
 
-        {isLoadingSummary ? (
-          <StatCardSkeleton />
-        ) : (
-          <div className="card p-4">
-            <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">Security Risk</div>
-            <div className="font-semibold text-slate-900 flex items-center gap-2">
-              <ShieldAlert size={14} style={{ color: RISK_COLORS[summary.risk_level.toLowerCase()] ?? '#94a3b8' }} />
-              <span className="capitalize">{summary.risk_level}</span>
-            </div>
+        <div className="card p-4">
+          <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">Security Risk</div>
+          <div className="font-semibold text-slate-900 flex items-center gap-2">
+            <ShieldAlert size={14} style={{ color: RISK_COLORS[summary.risk_level.toLowerCase()] ?? '#94a3b8' }} />
+            <span className="capitalize">{summary.risk_level}</span>
           </div>
-        )}
+        </div>
 
-        {isLoadingSummary ? (
-          <StatCardSkeleton />
-        ) : (
-          <div className="card p-4">
-            <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">High/Crit CVEs</div>
-            <div className="font-semibold text-slate-900 text-lg tabular-nums">
-              {summary.total_cve_critical + summary.total_cve_high}
-            </div>
+        <div className="card p-4">
+          <div className="text-slate-500 text-xs font-medium uppercase tracking-wider mb-1">High/Crit CVEs</div>
+          <div className="font-semibold text-slate-900 text-lg tabular-nums">
+            {summary.total_cve_critical + summary.total_cve_high}
           </div>
-        )}
+        </div>
       </div>
 
       {/* ── Header card ─────────────────────────────────────────────────── */}
@@ -336,6 +321,7 @@ export default function ToolDetail() {
       {/* ── Tab content ─────────────────────────────────────────────────── */}
       {activeTab === 'versions' && (
         <VersionsTab
+          toolName={toolName!}
           versions={versionsQuery.data ?? []}
           isLoading={versionsQuery.isLoading}
           isError={versionsQuery.isError}
@@ -365,11 +351,13 @@ export default function ToolDetail() {
    ============================================================================ */
 
 function VersionsTab({
+  toolName,
   versions,
   isLoading,
   isError,
   onRetry,
 }: {
+  toolName: string;
   versions: VersionRow[];
   isLoading: boolean;
   isError: boolean;

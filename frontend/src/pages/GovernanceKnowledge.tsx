@@ -56,7 +56,7 @@ export default function GovernanceKnowledge() {
   });
 
   // Fetch Blogs
-  const { data: blogs = [], isLoading: blogsLoading } = useQuery({
+  const { data: blogs = [], isLoading: blogsLoading } = useQuery<Blog[]>({
     queryKey: ['blogs', blogToolFilter, blogTagFilter],
     queryFn: async () => {
       const params: any = {};
