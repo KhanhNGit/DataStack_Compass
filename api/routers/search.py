@@ -25,9 +25,14 @@ router = APIRouter()
 # StarRocks External Catalog table references
 # =============================================================================
 
-_GOLD_SUMMARY = "minio_catalog.gold.gold_tool_summary"
-_SILVER_RELEASES = "minio_catalog.silver.silver_releases"
-_SILVER_CVES = "minio_catalog.silver.silver_cves"
+_GOLD_SUMMARY = "minio_delta_catalog.gold.gold_tool_summary"
+_SILVER_RELEASES = "minio_delta_catalog.silver.silver_releases"
+_SILVER_CVES = "minio_delta_catalog.silver.silver_cves"
+
+
+def _sanitize_like_input(value: str) -> str:
+    """Remove LIKE special characters to prevent pattern injection."""
+    return value.replace("%", "").replace("_", " ").replace(";", "").strip()
 
 
 @router.get(
@@ -43,16 +48,19 @@ async def universal_search(
     Tìm kiếm universal kết hợp Tools, CVEs, Versions.
     Thực thi tối đa 3 câu SQL đồng thời qua connection pool.
     """
-    like_pattern = f"%{q}%"
-    
+    sanitized_q = _sanitize_like_input(q)
+    if not sanitized_q:
+        return BaseResponse(
+            data={"results": [], "total": 0, "query": q},
+            meta={"type_filter": type},
+        )
+    like_pattern = f"%{sanitized_q}%"
+
     tasks = []
-    
-    # Helper to run query with own session
-    from api.database import SessionLocal
-    
+
+    # execute_query manages its own pool connection — safe for asyncio.to_thread
     def run_query(sql, params):
-        with SessionLocal() as db:
-            return execute_query(db, sql, params)
+        return execute_query(sql, params)
 
     # 1. Tools query
     if type in ("all", "tool"):
@@ -67,7 +75,7 @@ async def universal_search(
         tasks.append(asyncio.to_thread(run_query, sql_tools, (like_pattern,)))
     else:
         tasks.append(asyncio.to_thread(lambda: []))
-        
+
     # 2. CVEs query
     if type in ("all", "cve"):
         sql_cves = f"""
@@ -82,7 +90,7 @@ async def universal_search(
         tasks.append(asyncio.to_thread(run_query, sql_cves, (like_pattern, like_pattern)))
     else:
         tasks.append(asyncio.to_thread(lambda: []))
-        
+
     # 3. Versions query
     if type in ("all", "version"):
         sql_versions = f"""

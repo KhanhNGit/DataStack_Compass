@@ -71,6 +71,18 @@ def main():
         spark.stop()
         return
 
+    # BUG-03 fix: Bronze schema has no 'version' column — parse it from raw_json
+    df_raw = df_raw.withColumn(
+        "version",
+        F.get_json_object(F.col("raw_json"), "$.tag_name")
+    )
+    df_raw = df_raw.withColumn(
+        "version",
+        F.regexp_replace(F.col("version"), r"^v", "")
+    )
+    # Drop rows where version could not be parsed
+    df_raw = df_raw.filter(F.col("version").isNotNull() & (F.length(F.col("version")) > 0))
+
     # Semantic version sorting via UDF to establish from_version
     def version_tuple(v):
         import re
@@ -199,7 +211,9 @@ def main():
             df_changes.write.format("delta").mode("overwrite").save(table_path)
         logger.info(f"Successfully upserted {df_changes.count()} config changes for {tool}.")
     except Exception as e:
-        logger.error(f"Merge failed: {e}")
+        logger.error(f"Merge failed for {tool}: {e}")
+        spark.stop()
+        raise  # re-raise so Airflow marks task as FAILED
         
     spark.stop()
 

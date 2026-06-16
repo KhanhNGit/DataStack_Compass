@@ -59,6 +59,7 @@ async def asset_risk_overview(db: Connection = Depends(get_db)):
             a.environment,
             g.eol_date
         ORDER BY a.department, a.project_name, a.tool_name
+        LIMIT 500
     """
     
     with db.cursor() as cursor:

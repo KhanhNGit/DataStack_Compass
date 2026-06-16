@@ -56,58 +56,40 @@ class BaseResponse(BaseModel):
     }
 
 
-class PaginatedResponse(BaseModel):
+class PaginatedResponse(BaseResponse):
     """Response cho paginated list endpoints.
 
-    Attributes
-    ----------
-    data : list
-        Items cho trang hiện tại.
-    total : int
-        Tổng số items (tất cả trang).
-    page : int
-        Trang hiện tại (1-indexed).
-    page_size : int
-        Số items mỗi trang.
-    meta : dict
-        Metadata bổ sung.
-    errors : list[str]
-        Danh sách lỗi (nếu có).
+    Pagination info is inside ``meta`` to conform to {data, meta, errors} contract.
+    Usage: PaginatedResponse(data=items, meta={"total": 100, "page": 1, "page_size": 20})
     """
 
-    data: List[Any] = Field(default_factory=list)
-    total: int = 0
-    page: int = 1
-    page_size: int = 20
-    meta: dict = Field(default_factory=dict)
-    errors: List[str] = Field(default_factory=list)
-
-    @property
-    def total_pages(self) -> int:
-        """Tổng số trang."""
-        if self.page_size <= 0:
-            return 0
-        return (self.total + self.page_size - 1) // self.page_size
-
-    @property
-    def has_next(self) -> bool:
-        """Có trang tiếp theo không."""
-        return self.page < self.total_pages
-
-    @property
-    def has_prev(self) -> bool:
-        """Có trang trước không."""
-        return self.page > 1
+    @staticmethod
+    def create(
+        data: list,
+        total: int,
+        page: int,
+        page_size: int,
+        extra_meta: Optional[dict] = None,
+    ) -> "PaginatedResponse":
+        """Factory method to build paginated response with meta."""
+        meta = {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total + page_size - 1) // page_size if page_size > 0 else 0,
+            "has_next": page < ((total + page_size - 1) // page_size if page_size > 0 else 0),
+            "has_prev": page > 1,
+        }
+        if extra_meta:
+            meta.update(extra_meta)
+        return PaginatedResponse(data=data, meta=meta)
 
     model_config = {
         "json_schema_extra": {
             "examples": [
                 {
                     "data": [{"tool_name": "apache-kafka"}],
-                    "total": 5,
-                    "page": 1,
-                    "page_size": 20,
-                    "meta": {},
+                    "meta": {"total": 5, "page": 1, "page_size": 20, "total_pages": 1},
                     "errors": [],
                 }
             ]

@@ -72,12 +72,12 @@ async def list_cves(
         cursor.execute(sql, tuple(params) + (page_size, offset))
         rows = cursor.fetchall()
 
-    return PaginatedResponse(
+    return PaginatedResponse.create(
         data=rows,
         total=total,
         page=page,
         page_size=page_size,
-        meta={"filters": {"tool_name": tool_name, "severity": severity, "days": days}},
+        extra_meta={"filters": {"tool_name": tool_name, "severity": severity, "days": days}},
     )
 
 

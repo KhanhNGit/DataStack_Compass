@@ -29,9 +29,24 @@ _STARROCKS_PORT = int(os.environ.get("STARROCKS_PORT", "9030"))
 _STARROCKS_USER = os.environ.get("STARROCKS_USER", "root")
 _STARROCKS_PASSWORD = os.environ.get("STARROCKS_PASSWORD", "")
 
+if not _STARROCKS_PASSWORD:
+    import warnings
+    warnings.warn(
+        "STARROCKS_PASSWORD is empty — root access without password is insecure. "
+        "Set STARROCKS_PASSWORD in your environment.",
+        RuntimeWarning,
+        stacklevel=2
+    )
+
 _MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
-_MINIO_ACCESS_KEY = os.environ.get("MINIO_ACCESS_KEY", "minioadmin")
-_MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", "minioadmin")
+_MINIO_ACCESS_KEY = os.environ.get("MINIO_ACCESS_KEY", "")
+_MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", "")
+
+if not _MINIO_ACCESS_KEY or not _MINIO_SECRET_KEY:
+    raise EnvironmentError(
+        "MINIO_ACCESS_KEY and MINIO_SECRET_KEY are required but not set."
+    )
+
 _BUCKET_NAME = "configs"
 _SEED_FILE_KEY = "asset_inventory_seed.json"
 
@@ -142,39 +157,53 @@ def sync_asset_inventory():
                 if valid_tools and t_name not in valid_tools:
                     logger.warning(f"Skipping invalid tool_name: {t_name}")
                     continue
+
+                # SCHEMA-02 fix: validate version_in_use is non-null before insert
+                version = asset.get("version_in_use")
+                if not version or not isinstance(version, str) or not version.strip():
+                    logger.warning(f"Skipping asset '{t_name}/{proj}' — missing version_in_use")
+                    continue
                     
                 valid_assets.append((
                     t_name, proj, env,
                     asset.get("department"),
                     asset.get("team_name"),
-                    asset.get("version_in_use"),
+                    version.strip(),
                     asset.get("owner_email")
                 ))
                 asset_keys.append((t_name, proj, env))
                 
             logger.info(f"Valid assets to UPSERT: {len(valid_assets)}")
+
+            # FLOW-03 fix: empty seed file should never wipe the inventory
+            if not valid_assets:
+                logger.warning(
+                    "No valid assets found after parsing seed file — "
+                    "skipping DELETE to prevent data loss."
+                )
+                conn.close()
+                return {"total_in_seed": len(assets), "valid_assets_synced": 0}
+
+            # Upsert cho bảng Primary Key
+            insert_sql = """
+                INSERT INTO compass_internal.asset_inventory
+                (tool_name, project_name, environment, department, team_name, version_in_use, owner_email, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+            """
+            cursor.executemany(insert_sql, valid_assets)
+            logger.info("Successfully UPSERTed valid assets.")
             
-            if valid_assets:
-                # Upsert cho bảng Primary Key
-                insert_sql = """
-                    INSERT INTO compass_internal.asset_inventory
-                    (tool_name, project_name, environment, department, team_name, version_in_use, owner_email, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
-                """
-                cursor.executemany(insert_sql, valid_assets)
-                logger.info("Successfully UPSERTed valid assets.")
-                
-                # Delete orphans
-                key_strings = [f"{t}|||{p}|||{e}" for t, p, e in asset_keys]
-                format_strings = ','.join(['%s'] * len(key_strings))
-                
-                delete_sql = f"""
-                    DELETE FROM compass_internal.asset_inventory
-                    WHERE CONCAT(tool_name, '|||', project_name, '|||', environment) NOT IN ({format_strings})
-                """
-                cursor.execute(delete_sql, tuple(key_strings))
-                deleted_rows = cursor.rowcount
-                logger.info(f"Deleted {deleted_rows} orphaned rows from asset_inventory.")
+            # Delete orphans
+            key_strings = [f"{t}|||{p}|||{e}" for t, p, e in asset_keys]
+            format_strings = ','.join(['%s'] * len(key_strings))
+            
+            delete_sql = f"""
+                DELETE FROM compass_internal.asset_inventory
+                WHERE CONCAT(tool_name, '|||', project_name, '|||', environment) NOT IN ({format_strings})
+            """
+            cursor.execute(delete_sql, tuple(key_strings))
+            deleted_rows = cursor.rowcount
+            logger.info(f"Deleted {deleted_rows} orphaned rows from asset_inventory.")
                 
         conn.close()
         

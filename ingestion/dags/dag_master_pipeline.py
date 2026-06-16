@@ -117,8 +117,8 @@ def _cleanup_bronze_old_data():
         .appName("VacuumBronze")
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
         .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
-        .config("spark.hadoop.fs.s3a.access.key", os.environ.get("MINIO_ACCESS_KEY", "minioadmin"))
-        .config("spark.hadoop.fs.s3a.secret.key", os.environ.get("MINIO_SECRET_KEY", "minioadmin"))
+        .config("spark.hadoop.fs.s3a.access.key", os.environ.get("MINIO_ACCESS_KEY", ""))
+        .config("spark.hadoop.fs.s3a.secret.key", os.environ.get("MINIO_SECRET_KEY", ""))
         .config("spark.hadoop.fs.s3a.endpoint", os.environ.get("MINIO_ENDPOINT", "http://127.0.0.1:9000"))
         .config("spark.hadoop.fs.s3a.path.style.access", "true")
         .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem"))
@@ -185,8 +185,8 @@ with DAG(
         --packages io.delta:delta-core_2.12:2.4.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262 \\
         --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \\
         --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \\
-        --conf "spark.hadoop.fs.s3a.access.key=${{MINIO_ACCESS_KEY:-minioadmin}}" \\
-        --conf "spark.hadoop.fs.s3a.secret.key=${{MINIO_SECRET_KEY:-minioadmin}}" \\
+        --conf "spark.hadoop.fs.s3a.access.key=${{MINIO_ACCESS_KEY}}" \\
+        --conf "spark.hadoop.fs.s3a.secret.key=${{MINIO_SECRET_KEY}}" \\
         --conf "spark.hadoop.fs.s3a.endpoint=${{MINIO_ENDPOINT:-http://127.0.0.1:9000}}" \\
         --conf "spark.hadoop.fs.s3a.path.style.access=true" \\
         --conf "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem" \\

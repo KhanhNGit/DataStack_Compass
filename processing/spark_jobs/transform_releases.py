@@ -449,28 +449,46 @@ def transform_releases(
 
     @F.udf(ArrayType(StringType()))
     def udf_extract_breaking(body):
-        return extract_breaking_changes(body) or None
+        # LOGIC-02 fix: never convert [] to None — keep empty arrays distinct from null
+        result = extract_breaking_changes(body)
+        return result if result is not None else []
 
     @F.udf(ArrayType(StringType()))
     def udf_extract_deprecated(body):
-        return extract_deprecated_apis(body) or None
+        result = extract_deprecated_apis(body)
+        return result if result is not None else []
 
     enriched_df = (
         valid_df
         .withColumn("breaking_changes", udf_extract_breaking(F.col("_body")))
         .withColumn("deprecated_apis", udf_extract_deprecated(F.col("_body")))
         .withColumn(
-            "breaking_changes_enriched",
-            F.when(
-                F.col("breaking_changes").isNotNull(),
-                F.transform(F.col("breaking_changes"), classify_breaking_change_udf)
-            ).otherwise(F.lit(None))
-        )
-        .withColumn(
             "release_date",
             F.to_date(F.to_timestamp(F.col("_published_at"))),
         )
     )
+
+    # ERR-04 fix: F.transform doesn't accept a UDF — use explode + classify + collect_list
+    from processing.spark_jobs.classify_breaking_changes import classify_breaking_change_udf
+
+    # Only process rows that have breaking changes
+    df_with_bc = enriched_df.filter(F.size(F.col("breaking_changes")) > 0)
+    df_without_bc = enriched_df.filter(F.size(F.col("breaking_changes")) == 0)
+
+    if df_with_bc.rdd.isEmpty():
+        enriched_df = enriched_df.withColumn("breaking_changes_enriched", F.lit(None))
+    else:
+        # Preserve original columns for groupBy
+        _group_cols = [c for c in enriched_df.columns]
+        df_exploded = df_with_bc.withColumn("_bc_item", F.explode(F.col("breaking_changes")))
+        df_classified = df_exploded.withColumn("_bc_enriched", classify_breaking_change_udf(F.col("_bc_item")))
+        df_reagg = (
+            df_classified
+            .groupBy(*_group_cols)
+            .agg(F.collect_list("_bc_enriched").alias("breaking_changes_enriched"))
+        )
+        df_without_bc = df_without_bc.withColumn("breaking_changes_enriched", F.lit(None))
+        enriched_df = df_reagg.unionByName(df_without_bc, allowMissingColumns=True)
 
     # ─── Step 5: Build silver DataFrame ──────────────────────────────────
     logger.info("Step 5/6 — Building silver DataFrame")

@@ -36,12 +36,12 @@ router = APIRouter()
 # Table references
 # =============================================================================
 
-_GOLD_SUMMARY = "minio_catalog.gold.gold_tool_summary"
-_SILVER_RELEASES = "minio_catalog.silver.silver_releases"
-_SILVER_CVES = "minio_catalog.silver.silver_cves"
-_SILVER_COMPAT = "minio_catalog.silver.silver_compatibility"
-_SILVER_LICENSES = "minio_catalog.silver.silver_license_changes"
-_SILVER_CONFIG = "minio_catalog.silver.silver_config_changes"
+_GOLD_SUMMARY = "minio_delta_catalog.gold.gold_tool_summary"
+_SILVER_RELEASES = "minio_delta_catalog.silver.silver_releases"
+_SILVER_CVES = "minio_delta_catalog.silver.silver_cves"
+_SILVER_COMPAT = "minio_delta_catalog.silver.silver_compatibility"
+_SILVER_LICENSES = "minio_delta_catalog.silver.silver_license_changes"
+_SILVER_CONFIG = "minio_delta_catalog.silver.silver_config_changes"
 
 # =============================================================================
 # In-memory cache with TTL
@@ -88,28 +88,16 @@ def _cache_set(key: str, data: Any) -> None:
 # Helpers
 # =============================================================================
 
+from processing.spark_utils.semver import parse_semver as _canonical_parse
+from processing.spark_utils.semver import compare_semver, is_version_affected
+
+
 def _parse_semver_tuple(version: Optional[str]) -> Tuple[int, ...]:
     """Parse version thành tuple of ints cho comparison.
-
-    >>> _parse_semver_tuple("3.7.1")
-    (3, 7, 1)
-    >>> _parse_semver_tuple("v3.7")
-    (3, 7, 0)
+    Delegates to canonical processing.spark_utils.semver module.
     """
-    if not version:
-        return (0, 0, 0)
-
-    cleaned = version.strip().lstrip("vV").split("-")[0]
-    parts = []
-    for p in cleaned.split(".")[:3]:
-        try:
-            parts.append(int(p))
-        except ValueError:
-            parts.append(0)
-
-    while len(parts) < 3:
-        parts.append(0)
-    return tuple(parts)
+    major, minor, patch, _pre = _canonical_parse(version or "")
+    return (major, minor, patch)
 
 
 def _semver_between(
@@ -434,15 +422,19 @@ async def version_diff(
         fixed_in = cve.get("fixed_in_version")
         fixed_tuple = _parse_semver_tuple(fixed_in) if fixed_in else (999, 999, 999)
 
-        # CVE affects from_version?
-        affects_from = from_version in affected or any(
-            _parse_semver_tuple(v) <= from_tuple for v in affected if v != "unknown"
+        # LOGIC-05 fix: use proper semver range comparison
+        affects_from = any(
+            is_version_affected(from_version, spec)
+            for spec in affected
+            if spec and spec != "unknown"
         )
 
         # CVE affects to_version?
-        affects_to = to_version in affected or (
-            fixed_tuple > to_tuple  # chưa fixed trong to_version
-        )
+        affects_to = any(
+            is_version_affected(to_version, spec)
+            for spec in affected
+            if spec and spec != "unknown"
+        ) or (fixed_tuple > to_tuple)  # also affected if not yet fixed
 
         # Resolved: affected from, fixed <= to
         if affects_from and fixed_in and fixed_tuple <= to_tuple:

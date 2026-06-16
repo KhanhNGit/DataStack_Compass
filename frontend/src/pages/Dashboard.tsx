@@ -334,7 +334,15 @@ export default function Dashboard() {
               label="Compliance Score"
               value={
                 totalTools > 0
-                  ? `${Math.round(((totalTools - (severityBreakdown['Critical'] ?? 0)) / totalTools) * 100)}%`
+                  ? (() => {
+                      // "% of tools with zero critical CVEs"
+                      const toolsWithCritical = new Set(
+                        assetRiskData
+                          .filter((a: any) => (a.critical_cves_count || 0) > 0)
+                          .map((a: any) => a.tool_name)
+                      ).size;
+                      return `${Math.round(((totalTools - toolsWithCritical) / totalTools) * 100)}%`;
+                    })()
                   : '—'
               }
               icon={ShieldCheck}

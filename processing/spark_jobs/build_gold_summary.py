@@ -92,45 +92,20 @@ def _eol_database_path() -> str:
 
 
 # =============================================================================
-# Semantic version sorting
+# Semantic version sorting — delegates to canonical semver module
 # =============================================================================
+
+from processing.spark_utils.semver import parse_semver as _canonical_parse_semver
+
 
 def parse_semver_tuple(version: Optional[str]) -> Tuple[int, ...]:
     """Parse version string thành tuple of ints cho comparison.
 
-    Examples
-    --------
-    >>> parse_semver_tuple("3.7.1")
-    (3, 7, 1)
-    >>> parse_semver_tuple("3.7")
-    (3, 7, 0)
-    >>> parse_semver_tuple("3.7.1-rc1")
-    (3, 7, 1)
-    >>> parse_semver_tuple(None)
-    (0, 0, 0)
+    Delegates to processing.spark_utils.semver.parse_semver, which handles
+    pre-release identifiers correctly per SemVer 2.0.
     """
-    if not version:
-        return (0, 0, 0)
-
-    # Strip prefix "v" và prerelease suffix
-    cleaned = version.strip().lstrip("vV")
-    # Lấy phần trước dấu "-" (loại bỏ prerelease tag)
-    base = cleaned.split("-")[0]
-
-    parts = base.split(".")
-    result: List[int] = []
-
-    for part in parts[:3]:  # Chỉ lấy MAJOR.MINOR.PATCH
-        try:
-            result.append(int(part))
-        except ValueError:
-            result.append(0)
-
-    # Pad to 3 elements
-    while len(result) < 3:
-        result.append(0)
-
-    return tuple(result)
+    major, minor, patch, _pre = _canonical_parse_semver(version or "")
+    return (major, minor, patch)
 
 
 def semver_sort_key(version: Optional[str]) -> str:
@@ -427,7 +402,7 @@ def print_starrocks_catalog_sql() -> str:
     MinIO mà KHÔNG cần ETL thêm. Nghĩa là:
 
     1. FastAPI backend chỉ cần query StarRocks bằng SQL thông thường:
-       ``SELECT * FROM minio_catalog.gold.tool_summary WHERE tool_name = 'kafka'``
+       ``SELECT * FROM minio_delta_catalog.gold.gold_tool_summary WHERE tool_name = 'kafka'``
 
     2. Không cần pipeline riêng để sync dữ liệu từ Delta Lake → StarRocks.
        StarRocks đọc Delta Lake metadata (transaction log) trực tiếp và
@@ -443,9 +418,16 @@ def print_starrocks_catalog_sql() -> str:
     mà vẫn giữ Delta Lake làm single source of truth cho toàn bộ Lakehouse.
     """
     minio_endpoint = os.environ.get("MINIO_ENDPOINT", "http://localhost:9000")
-    minio_access_key = os.environ.get("MINIO_ACCESS_KEY", "minioadmin")
-    minio_secret_key = os.environ.get("MINIO_SECRET_KEY", "minioadmin")
+    minio_access_key = os.environ.get("MINIO_ACCESS_KEY", "")
+    minio_secret_key = os.environ.get("MINIO_SECRET_KEY", "")
     gold_bucket = os.environ.get("MINIO_BUCKET_GOLD", "gold")
+
+    if not minio_access_key or not minio_secret_key:
+        logger.warning(
+            "MINIO_ACCESS_KEY or MINIO_SECRET_KEY not set — "
+            "generated SQL will have empty credentials. "
+            "Set these env vars before running init_starrocks.py."
+        )
 
     sql_statements = f"""
 -- =============================================================================
@@ -455,11 +437,11 @@ def print_starrocks_catalog_sql() -> str:
 --
 -- External Catalog cho phép StarRocks query trực tiếp Delta Lake files
 -- mà KHÔNG cần ETL thêm. FastAPI backend chỉ cần:
---   SELECT * FROM minio_catalog.gold.gold_tool_summary WHERE tool_name = 'kafka'
+--   SELECT * FROM minio_delta_catalog.gold.gold_tool_summary WHERE tool_name = 'kafka'
 -- =============================================================================
 
 -- 1. Tạo External Catalog kết nối MinIO
-CREATE EXTERNAL CATALOG IF NOT EXISTS minio_catalog
+CREATE EXTERNAL CATALOG IF NOT EXISTS minio_delta_catalog
 PROPERTIES (
     "type"                          = "deltalake",
     "hive.metastore.type"           = "glue",
@@ -471,10 +453,10 @@ PROPERTIES (
 );
 
 -- 2. Tạo database trong catalog (mapping tới bucket)
-CREATE DATABASE IF NOT EXISTS minio_catalog.gold;
+CREATE DATABASE IF NOT EXISTS minio_delta_catalog.gold;
 
 -- 3. Tạo external table trỏ tới gold_tool_summary Delta Lake
-CREATE EXTERNAL TABLE IF NOT EXISTS minio_catalog.gold.gold_tool_summary (
+CREATE EXTERNAL TABLE IF NOT EXISTS minio_delta_catalog.gold.gold_tool_summary (
     tool_name           VARCHAR(100)    NOT NULL    COMMENT 'Tên tool (e.g. apache-kafka)',
     latest_version      VARCHAR(50)                 COMMENT 'Version mới nhất (semantic versioning)',
     eol_date            DATE                        COMMENT 'End-of-Life date',
@@ -489,28 +471,30 @@ PROPERTIES (
 );
 
 -- 4. Verify
-SELECT * FROM minio_catalog.gold.gold_tool_summary ORDER BY total_cve_critical DESC;
+SELECT * FROM minio_delta_catalog.gold.gold_tool_summary ORDER BY total_cve_critical DESC;
 
 -- =============================================================================
 -- Silver layer tables (optional — nếu FastAPI cần query chi tiết)
 -- =============================================================================
 
-CREATE DATABASE IF NOT EXISTS minio_catalog.silver;
+CREATE DATABASE IF NOT EXISTS minio_delta_catalog.silver;
 
-CREATE EXTERNAL TABLE IF NOT EXISTS minio_catalog.silver.silver_releases (
-    tool_name           VARCHAR(100)    NOT NULL,
-    version             VARCHAR(50)     NOT NULL,
-    release_date        DATE,
-    breaking_changes    JSON,
-    deprecated_apis     JSON,
-    processed_at        DATETIME        NOT NULL
+CREATE EXTERNAL TABLE IF NOT EXISTS minio_delta_catalog.silver.silver_releases (
+    tool_name                VARCHAR(100)    NOT NULL,
+    version                  VARCHAR(50)     NOT NULL,
+    release_date             DATE,
+    issues                   JSON            NULL        COMMENT 'JSON array of issue objects',
+    breaking_changes         JSON,
+    breaking_changes_enriched JSON           NULL        COMMENT 'JSON array of classified breaking changes',
+    deprecated_apis          JSON            NULL        COMMENT 'JSON array of deprecated API names',
+    processed_at             DATETIME        NOT NULL
 )
 ENGINE = deltalake
 PROPERTIES (
     "location" = "s3a://silver/silver_releases/"
 );
 
-CREATE EXTERNAL TABLE IF NOT EXISTS minio_catalog.silver.silver_cves (
+CREATE EXTERNAL TABLE IF NOT EXISTS minio_delta_catalog.silver.silver_cves (
     cve_id              VARCHAR(30)     NOT NULL,
     tool_name           VARCHAR(100)    NOT NULL,
     affected_versions   JSON            NOT NULL,
@@ -526,7 +510,12 @@ PROPERTIES (
 );
 """
 
-    logger.info("StarRocks External Catalog SQL:\n%s", sql_statements)
+    # SEC-04: Never log actual credentials
+    logger.info(
+        "StarRocks External Catalog SQL generated successfully. "
+        "Run `python storage/scripts/init_starrocks.py` to apply. "
+        "(Credentials redacted from logs)"
+    )
     return sql_statements
 
 

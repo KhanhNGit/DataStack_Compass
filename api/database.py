@@ -8,7 +8,7 @@ Tất cả SQL syntax PHẢI tương thích StarRocks — KHÔNG dùng PostgreSQ
 StarRocks specifics:
 - MySQL protocol trên port 9030
 - Hỗ trợ: LIMIT/OFFSET, GROUP BY, HAVING, window functions
-- External Catalog: ``minio_catalog.gold.gold_tool_summary``
+- External Catalog: ``minio_delta_catalog.gold.gold_tool_summary``
 - KHÔNG hỗ trợ: RETURNING, ON CONFLICT, CTE recursive
 """
 
@@ -34,6 +34,15 @@ _STARROCKS_USER = os.environ.get("STARROCKS_USER", "root")
 _STARROCKS_PASSWORD = os.environ.get("STARROCKS_PASSWORD", "")
 _STARROCKS_DATABASE = os.environ.get("STARROCKS_DATABASE", "")
 _POOL_SIZE = int(os.environ.get("DB_POOL_SIZE", "5"))
+
+if not _STARROCKS_PASSWORD:
+    import warnings
+    warnings.warn(
+        "STARROCKS_PASSWORD is empty — root access without password is insecure. "
+        "Set STARROCKS_PASSWORD in your environment.",
+        RuntimeWarning,
+        stacklevel=2
+    )
 
 # =============================================================================
 # Connection pool (module-level singleton)

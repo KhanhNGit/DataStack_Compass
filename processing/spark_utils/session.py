@@ -28,8 +28,8 @@ _DEFAULTS = {
     "SPARK_MASTER": "local[*]",
     "SPARK_DRIVER_MEMORY": "2g",
     "MINIO_ENDPOINT": os.environ.get("MINIO_ENDPOINT", "http://localhost:9000"),
-    "MINIO_ACCESS_KEY": "minioadmin",
-    "MINIO_SECRET_KEY": "minioadmin",
+    "MINIO_ACCESS_KEY": "",
+    "MINIO_SECRET_KEY": "",
 }
 
 

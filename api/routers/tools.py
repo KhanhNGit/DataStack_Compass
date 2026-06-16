@@ -8,10 +8,10 @@ release details, compatibility, và full-text search.
 Prefix: /api/v1/tools
 
 Query StarRocks External Catalog:
-    - minio_catalog.gold.gold_tool_summary
-    - minio_catalog.silver.silver_releases
-    - minio_catalog.silver.silver_cves
-    - minio_catalog.silver.silver_compatibility
+    - minio_delta_catalog.gold.gold_tool_summary
+    - minio_delta_catalog.silver.silver_releases
+    - minio_delta_catalog.silver.silver_cves
+    - minio_delta_catalog.silver.silver_compatibility
 
 SQL syntax: StarRocks (MySQL-compatible).
     - %s placeholders (KHÔNG dùng $1 PostgreSQL)
@@ -42,10 +42,10 @@ router = APIRouter()
 # StarRocks External Catalog table references
 # =============================================================================
 
-_GOLD_SUMMARY = "minio_catalog.gold.gold_tool_summary"
-_SILVER_RELEASES = "minio_catalog.silver.silver_releases"
-_SILVER_CVES = "minio_catalog.silver.silver_cves"
-_SILVER_COMPAT = "minio_catalog.silver.silver_compatibility"
+_GOLD_SUMMARY = "minio_delta_catalog.gold.gold_tool_summary"
+_SILVER_RELEASES = "minio_delta_catalog.silver.silver_releases"
+_SILVER_CVES = "minio_delta_catalog.silver.silver_cves"
+_SILVER_COMPAT = "minio_delta_catalog.silver.silver_compatibility"
 
 
 # =============================================================================
@@ -84,8 +84,11 @@ async def list_tools(
     params = []
 
     if search:
-        conditions.append("g.tool_name LIKE %s")
-        params.append(f"%{search}%")
+        # SEC-03: sanitize LIKE meta-characters
+        sanitized_search = search.replace("%", "").replace("_", " ").replace(";", "").strip()
+        if sanitized_search:
+            conditions.append("g.tool_name LIKE %s")
+            params.append(f"%{sanitized_search}%")
 
     # Lifecycle filter được áp dụng bằng HAVING trên computed column
     # vì StarRocks không cho phép dùng alias trong WHERE
@@ -169,12 +172,12 @@ async def list_tools(
         cursor.execute(data_sql, tuple(data_params))
         rows = cursor.fetchall()
 
-    return PaginatedResponse(
+    return PaginatedResponse.create(
         data=rows,
         total=total,
         page=page,
         page_size=page_size,
-        meta={
+        extra_meta={
             "filters": {
                 "search": search,
                 "lifecycle_status": lifecycle_status,
@@ -367,12 +370,12 @@ async def list_versions(
         cursor.execute(sql, (tool_name, tool_name, page_size, offset))
         rows = cursor.fetchall()
 
-    return PaginatedResponse(
+    return PaginatedResponse.create(
         data=rows,
         total=total,
         page=page,
         page_size=page_size,
-        meta={"tool_name": tool_name},
+        extra_meta={"tool_name": tool_name},
     )
 
 
@@ -411,33 +414,33 @@ async def get_version_detail(
         )
 
     # ── CVEs affecting this version ──────────────────────────────────────
-    # StarRocks: dùng FIND_IN_SET hoặc LIKE để search trong affected_versions
-    # affected_versions lưu dạng JSON array string
     cve_sql = f"""
         SELECT cve_id, tool_name, affected_versions, fixed_in_version,
                cvss_score, severity, description, published_at
         FROM {_SILVER_CVES}
         WHERE tool_name = %s
         ORDER BY cvss_score DESC
-        LIMIT 50
     """
 
     with db.cursor() as cursor:
         cursor.execute(cve_sql, (tool_name,))
         all_cves = cursor.fetchall()
 
-    # Filter CVEs where affected_versions contains this version
-    # (in-memory filter vì affected_versions là JSON array)
+    # Filter CVEs using proper semver range comparison
+    from processing.spark_utils.semver import is_version_affected
+    import json as _json
+
     relevant_cves = []
     for cve in all_cves:
         affected = cve.get("affected_versions")
         if affected:
-            # affected_versions có thể là list hoặc JSON string
             if isinstance(affected, str):
-                if version in affected:
-                    relevant_cves.append(cve)
-            elif isinstance(affected, list):
-                if version in affected:
+                try:
+                    affected = _json.loads(affected)
+                except (ValueError, TypeError):
+                    affected = [affected]
+            if isinstance(affected, list):
+                if any(is_version_affected(version, spec) for spec in affected if spec):
                     relevant_cves.append(cve)
 
     # ── Compatibility / dependencies ─────────────────────────────────────

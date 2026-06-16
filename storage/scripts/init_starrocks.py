@@ -39,8 +39,12 @@ def main():
         sql_content = f.read()
 
     # 2. Thay thế environment variables
-    minio_ak = os.environ.get("MINIO_ACCESS_KEY", "minioadmin")
-    minio_sk = os.environ.get("MINIO_SECRET_KEY", "minioadmin")
+    minio_ak = os.environ.get("MINIO_ACCESS_KEY", "")
+    minio_sk = os.environ.get("MINIO_SECRET_KEY", "")
+
+    if not minio_ak or not minio_sk:
+        logger.error("MINIO_ACCESS_KEY and MINIO_SECRET_KEY must be set in environment")
+        sys.exit(1)
     
     # Đối với StarRocks (chạy trong Docker container), endpoint phải trỏ tới container minio
     minio_ep = os.environ.get("MINIO_ENDPOINT", "http://minio:9000")
