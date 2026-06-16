@@ -157,7 +157,7 @@ interface EolItemProps {
   lifecycle_status?: string;
 }
 
-function EolTimelineItem({ tool_name, eol_date, latest_version, lifecycle_status }: EolItemProps) {
+function EolTimelineItem({ tool_name, eol_date }: EolItemProps) {
   const now = Date.now();
   const eol = new Date(eol_date).getTime();
   // Tính từ 180 ngày trước EOL tới EOL
@@ -566,7 +566,7 @@ export default function Dashboard() {
                   }
                   
                   let riskLevel = 'LOW';
-                  let rowColor = 'bg-white';
+                  let rowColor: string;
                   
                   if (critical >= 1 || daysToEol <= 0) {
                     riskLevel = 'HIGH';

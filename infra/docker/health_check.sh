@@ -72,6 +72,7 @@ if [ "$passed" -eq "$total" ]; then
   echo -e "  Result: ${GREEN}${BOLD}${passed}/${total} services healthy ✓${RESET}"
 else
   echo -e "  Result: ${RED}${BOLD}${passed}/${total} services healthy ✗${RESET}"
+  exit 1
 fi
 
 # ── 4. Docker Memory Usage ──────────────────────────────────────────────────

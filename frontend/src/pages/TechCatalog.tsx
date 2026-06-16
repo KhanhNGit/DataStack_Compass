@@ -114,7 +114,7 @@ export default function TechCatalog() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const tools: ToolRow[] = apiResponse?.data ?? [];
+  const tools: ToolRow[] = useMemo(() => apiResponse?.data ?? [], [apiResponse?.data]);
   const total: number = apiResponse?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 

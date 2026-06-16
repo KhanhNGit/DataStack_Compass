@@ -20,7 +20,7 @@ import {
   Settings,
 } from 'lucide-react';
 import api from '../config/api';
-import { Skeleton, TableRowSkeleton, StatCardSkeleton, CVEBadgeSkeleton } from '../components/Skeleton';
+import { Skeleton, TableRowSkeleton, StatCardSkeleton } from '../components/Skeleton';
 import { EmptyState } from '../components/EmptyState/EmptyState';
 import ExportButton from '../components/ExportButton/ExportButton';
 import { sortVersions } from '../utils/semver';
@@ -167,9 +167,7 @@ export default function ToolDetail() {
   });
 
   const summary: ToolSummary | null = detailQuery.data?.summary ?? null;
-  const cveBreakdown: { severity: string; count: number }[] = detailQuery.data?.cve_breakdown ?? [];
   const totalVersions: number = detailQuery.data?.total_versions ?? 0;
-  const recentBreaking: any[] = detailQuery.data?.recent_breaking_changes ?? [];
 
   const riskColor = RISK_COLORS[summary?.risk_level ?? 'low'];
   const lcBadge = LIFECYCLE_BADGE[summary?.lifecycle_status ?? 'Active'];
@@ -814,7 +812,7 @@ function CompatibilityTab({ toolName, versions }: { toolName: string; versions: 
     staleTime: 10 * 60_000,
   });
 
-  const data = compatQuery.data ?? [];
+  const data = useMemo(() => compatQuery.data ?? [], [compatQuery.data]);
 
   // Extract all dependency keys
   const allDepKeys = useMemo(() => {

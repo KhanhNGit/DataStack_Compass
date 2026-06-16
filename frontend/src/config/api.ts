@@ -3,7 +3,10 @@ import type { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axio
 
 // ─── Base URL ────────────────────────────────────────────────────────────────
 // Vite uses import.meta.env for env vars (prefixed with VITE_)
-const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
+const BASE_URL = import.meta.env.VITE_API_URL ?? import.meta.env.REACT_APP_API_URL;
+if (!BASE_URL) {
+  console.warn("API URL is not defined in environment variables. Falling back to relative path.");
+}
 
 // ─── Axios instance ──────────────────────────────────────────────────────────
 const api: AxiosInstance = axios.create({
@@ -37,6 +40,13 @@ api.interceptors.response.use(
     const detail = (error.response?.data as Record<string, unknown>)?.detail;
 
     console.error(`[API] Error ${status} on ${url}:`, detail ?? error.message);
+
+    // Xử lý chung các mã lỗi hệ thống
+    if (status === 401 || status === 403 || status === 500) {
+      window.dispatchEvent(new CustomEvent('app-toast', { 
+        detail: { type: 'error', message: `Lỗi hệ thống (${status}): ${detail ?? error.message}` } 
+      }));
+    }
 
     return Promise.reject(error);
   },

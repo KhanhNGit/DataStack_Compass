@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Query
 
@@ -48,6 +47,13 @@ async def universal_search(
     
     tasks = []
     
+    # Helper to run query with own session
+    from api.database import SessionLocal
+    
+    def run_query(sql, params):
+        with SessionLocal() as db:
+            return execute_query(db, sql, params)
+
     # 1. Tools query
     if type in ("all", "tool"):
         sql_tools = f"""
@@ -58,7 +64,7 @@ async def universal_search(
             WHERE tool_name LIKE %s
             LIMIT 5
         """
-        tasks.append(asyncio.to_thread(execute_query, sql_tools, (like_pattern,)))
+        tasks.append(asyncio.to_thread(run_query, sql_tools, (like_pattern,)))
     else:
         tasks.append(asyncio.to_thread(lambda: []))
         
@@ -73,7 +79,7 @@ async def universal_search(
             ORDER BY cvss_score DESC
             LIMIT 5
         """
-        tasks.append(asyncio.to_thread(execute_query, sql_cves, (like_pattern, like_pattern)))
+        tasks.append(asyncio.to_thread(run_query, sql_cves, (like_pattern, like_pattern)))
     else:
         tasks.append(asyncio.to_thread(lambda: []))
         
@@ -88,7 +94,7 @@ async def universal_search(
             ORDER BY release_date DESC
             LIMIT 5
         """
-        tasks.append(asyncio.to_thread(execute_query, sql_versions, (like_pattern, like_pattern)))
+        tasks.append(asyncio.to_thread(run_query, sql_versions, (like_pattern, like_pattern)))
     else:
         tasks.append(asyncio.to_thread(lambda: []))
 

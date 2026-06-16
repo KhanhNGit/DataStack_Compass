@@ -11,7 +11,17 @@ import DependencyGraph from './pages/DependencyGraph';
 import { ToastProvider } from './components/Toast/ToastProvider';
 
 /* ─── React Query client ──────────────────────────────────────────────────── */
+import { QueryCache } from '@tanstack/react-query';
+
 const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error) => {
+      // Dispatch a custom event to be picked up by a global toast listener
+      // or directly show a toast if we had access to the toast function here.
+      console.error(`Global Query Error: ${error.message}`);
+      window.dispatchEvent(new CustomEvent('app-toast', { detail: { type: 'error', message: error.message } }));
+    },
+  }),
   defaultOptions: {
     queries: {
       staleTime: 5 * 60 * 1000,    // 5 minutes

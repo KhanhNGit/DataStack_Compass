@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 
 from processing.great_expectations.suites.silver_releases_suite import _ExpectationRunner, ValidationResult
 from processing.exceptions import DataQualityError

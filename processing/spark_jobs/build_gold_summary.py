@@ -31,9 +31,9 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
+import argparse
 from pyspark.sql import DataFrame, Row, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
@@ -534,9 +534,16 @@ PROPERTIES (
 # CLI entrypoint
 # =============================================================================
 
-def main() -> Dict[str, int]:
+def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Build Gold Tool Summary")
+    parser.add_argument("--date", default=None, help="Filter run by date (YYYY-MM-DD)")
+    parser.add_argument("--tool", default=None, help="Specific tool to update")
+    return parser.parse_args(argv)
+
+def main(argv: Optional[List[str]] = None) -> Dict[str, int]:
     """Entrypoint: tạo Spark session, build gold summary, print StarRocks SQL."""
-    logger.info("Starting build_gold_tool_summary")
+    args = parse_args(argv)
+    logger.info(f"Starting build_gold_tool_summary with args: {args}")
 
     spark = get_spark_session("build-gold-summary")
 

@@ -12,11 +12,11 @@ import logging
 import os
 import re
 import sys
-from datetime import datetime, timezone
 from typing import List, Dict, Any
 
-from pyspark.sql import SparkSession, Row
-from pyspark.sql.types import StructType
+from pyspark.sql import Window
+from pyspark.sql import functions as F
+from pyspark.sql.types import StructType, StringType
 
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _PROJECT_ROOT not in sys.path:
@@ -61,104 +61,122 @@ def main():
     bronze_path = f"s3a://{bronze_bucket}/bronze_raw_releases/"
     
     try:
-        df_raw = spark.read.format("delta").load(bronze_path).filter(f"tool_name = '{tool}'").collect()
+        df_raw = spark.read.format("delta").load(bronze_path).filter(F.col("tool_name") == tool)
     except Exception as e:
         logger.error(f"Cannot read bronze_raw_releases: {e}")
         return
-        
-    # Sort versions
+
+    if df_raw.rdd.isEmpty():
+        logger.info(f"No releases found for tool {tool}.")
+        spark.stop()
+        return
+
+    # Semantic version sorting via UDF to establish from_version
     def version_tuple(v):
         import re
-        m = re.match(r"^\D*(\d+)\.(\d+)(\.(\d+))?", v)
+        if not v:
+            return (0, 0, 0)
+        m = re.match(r"^\D*(\d+)\.(\d+)(\.(\d+))?", str(v))
         if m:
             return (int(m.group(1)), int(m.group(2)), int(m.group(4) or 0))
         return (0, 0, 0)
         
-    df_raw = sorted(df_raw, key=lambda x: version_tuple(x.version))
-    
-    extracted_changes = []
-    
-    # Manual overrides
-    manual_changes = _load_manual_overrides(tool)
-    for mc in manual_changes:
-        extracted_changes.append({
-            "tool_name": tool,
-            "from_version": mc["from_version"],
-            "to_version": mc["to_version"],
-            "param_name": mc["param_name"],
-            "old_default": mc.get("old_default"),
-            "new_default": mc.get("new_default"),
-            "change_type": mc["change_type"],
-            "impact_level": mc.get("impact_level", "Low"),
-            "source_url": mc.get("source_url", ""),
-            "processed_at": datetime.now(timezone.utc)
-        })
-
-    prev_version = "unknown"
-    for row in df_raw:
-        ver = row.version
-        raw_json_str = row.raw_json
+    def semver_sort_key(v):
+        vt = version_tuple(v)
+        return f"{vt[0]:05d}.{vt[1]:05d}.{vt[2]:05d}"
         
+    udf_semver_key = F.udf(semver_sort_key, StringType())
+    
+    df_raw = df_raw.withColumn("_semver_key", udf_semver_key("version"))
+    window_spec = Window.partitionBy("tool_name").orderBy("_semver_key")
+    df_raw = df_raw.withColumn("from_version", F.lag("version", 1, "unknown").over(window_spec))
+
+    # Parse JSON safely
+    from pyspark.sql.types import StructField, StringType, ArrayType
+    
+    json_schema = StructType([StructField("body", StringType())])
+    df_raw = df_raw.withColumn("parsed_json", F.from_json(F.col("raw_json"), json_schema))
+    
+    # Track parse errors
+    df_raw = df_raw.withColumn("_parse_error", 
+        F.when(F.col("parsed_json").isNull() & F.col("raw_json").isNotNull() & (F.length(F.col("raw_json")) > 0), 
+               F.lit("JSON Parse Error"))
+         .otherwise(F.lit(None))
+    )
+    
+    df_raw = df_raw.withColumn("body", F.col("parsed_json.body"))
+    
+    # UDF to extract changes using Python regex
+    def extract_regex_changes(body_text):
+        if not body_text:
+            return []
+        
+        changes = []
         try:
-            raw_json = json.loads(raw_json_str)
-            body = raw_json.get("body", "")
-            
-            # P1
-            for m in P1.finditer(body):
-                extracted_changes.append({
-                    "tool_name": tool,
-                    "from_version": prev_version,
-                    "to_version": ver,
-                    "param_name": m.group(1),
-                    "old_default": m.group(2),
-                    "new_default": m.group(3),
-                    "change_type": "changed_default",
-                    "impact_level": "High" if "security" in m.group(1).lower() or "auth" in m.group(1).lower() else "Medium",
-                    "source_url": row.source_url,
-                    "processed_at": datetime.now(timezone.utc)
-                })
+            for m in P1.finditer(body_text):
+                param = m.group(1)
+                impact = "High" if "security" in param.lower() or "auth" in param.lower() else "Medium"
+                changes.append((param, m.group(2), m.group(3), "changed_default", impact))
                 
-            # P2
-            for m in P2.finditer(body):
-                extracted_changes.append({
-                    "tool_name": tool,
-                    "from_version": prev_version,
-                    "to_version": ver,
-                    "param_name": m.group(1),
-                    "old_default": None,
-                    "new_default": m.group(2),
-                    "change_type": "new_param",
-                    "impact_level": "High" if "security" in m.group(1).lower() else "Low",
-                    "source_url": row.source_url,
-                    "processed_at": datetime.now(timezone.utc)
-                })
+            for m in P2.finditer(body_text):
+                param = m.group(1)
+                impact = "High" if "security" in param.lower() else "Low"
+                changes.append((param, None, m.group(2), "new_param", impact))
                 
-            # P3
-            for m in P3.finditer(body):
-                extracted_changes.append({
-                    "tool_name": tool,
-                    "from_version": prev_version,
-                    "to_version": ver,
-                    "param_name": m.group(1),
-                    "old_default": None,
-                    "new_default": None,
-                    "change_type": "deprecated",
-                    "impact_level": "Low",
-                    "source_url": row.source_url,
-                    "processed_at": datetime.now(timezone.utc)
-                })
+            for m in P3.finditer(body_text):
+                changes.append((m.group(1), None, None, "deprecated", "Low"))
         except Exception:
             pass
-            
-        prev_version = ver
-        
-    if not extracted_changes:
+        return changes
+
+    change_schema = ArrayType(StructType([
+        StructField("param_name", StringType()),
+        StructField("old_default", StringType()),
+        StructField("new_default", StringType()),
+        StructField("change_type", StringType()),
+        StructField("impact_level", StringType())
+    ]))
+    
+    udf_extract = F.udf(extract_regex_changes, change_schema)
+    
+    df_extracted = df_raw.withColumn("changes_array", udf_extract("body"))
+    
+    # Log errors (if any)
+    error_count = df_raw.filter(F.col("_parse_error").isNotNull()).count()
+    if error_count > 0:
+        logger.warning(f"Found {error_count} records with JSON parse errors for {tool}.")
+
+    # Explode the array
+    df_exploded = df_extracted.select(
+        "tool_name",
+        "from_version",
+        F.col("version").alias("to_version"),
+        "source_url",
+        F.explode_outer("changes_array").alias("change")
+    ).filter(F.col("change").isNotNull())
+    
+    df_changes = df_exploded.select(
+        "tool_name",
+        "from_version",
+        "to_version",
+        F.col("change.param_name").alias("param_name"),
+        F.col("change.old_default").alias("old_default"),
+        F.col("change.new_default").alias("new_default"),
+        F.col("change.change_type").alias("change_type"),
+        F.col("change.impact_level").alias("impact_level"),
+        "source_url"
+    ).withColumn("processed_at", F.current_timestamp())
+
+    # Add manual overrides
+    manual_changes = _load_manual_overrides(tool)
+    if manual_changes:
+        manual_df = spark.createDataFrame(manual_changes, schema=SCHEMAS["silver_config_changes"])
+        df_changes = df_changes.unionByName(manual_df, allowMissingColumns=True)
+
+    if df_changes.rdd.isEmpty():
         logger.info(f"No config changes found for {tool}.")
         spark.stop()
         return
-        
-    schema = SCHEMAS["silver_config_changes"]
-    df_changes = spark.createDataFrame(extracted_changes, schema=schema)
     
     # Delta Merge
     silver_bucket = os.environ.get("MINIO_BUCKET_SILVER", "silver")

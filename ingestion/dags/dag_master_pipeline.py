@@ -45,7 +45,6 @@ def _run_great_expectations():
     # Vì mock local, ta sẽ mô phỏng việc gọi python APIs.
     # Trong thực tế sẽ import các hàm từ processing/great_expectations/suites/
     try:
-        from processing.great_expectations.suites.silver_releases_suite import build_and_run_suite
         # Chạy giả lập 1 suite cho 'apache-kafka' (hoặc loop list)
         logger.info("Running suite: silver_releases_suite")
         
@@ -152,6 +151,7 @@ with DAG(
     schedule="30 7 * * *",
     start_date=datetime(2024, 1, 1),
     catchup=False,
+    max_active_runs=1,
     tags=["compass", "master"],
 ) as dag:
 

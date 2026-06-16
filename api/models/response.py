@@ -21,7 +21,7 @@ Models
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Generic, List, Optional, TypeVar
+from typing import Any, List, Optional, TypeVar
 
 from pydantic import BaseModel, Field
 

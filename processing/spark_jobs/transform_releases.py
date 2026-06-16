@@ -18,7 +18,6 @@ Portable:   Dùng s3a:// paths + env vars — chạy được trên local[*] và
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 import re
@@ -26,7 +25,7 @@ import sys
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
-from pyspark.sql import DataFrame, Row, SparkSession
+from pyspark.sql import Row, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import (
     ArrayType,
@@ -293,7 +292,7 @@ def transform_releases(
         bronze_df = (
             spark.read.format("delta").load(bronze_uri)
             .filter(F.col("tool_name") == tool_name)
-            .filter(F.col("processed") == False)
+            .filter(~F.col("processed"))
         )
     except Exception as exc:
         logger.error("Failed to read bronze table at %s: %s", bronze_uri, exc)
@@ -531,7 +530,7 @@ def transform_releases(
     logger.info("Step 7/7 — Updating bronze records as processed")
     if DeltaTable.isDeltaTable(spark, bronze_uri):
         bronze_table = DeltaTable.forPath(spark, bronze_uri)
-        update_cond = (F.col("tool_name") == tool_name) & (F.col("processed") == False)
+        update_cond = (F.col("tool_name") == tool_name) & (~F.col("processed"))
         if run_date:
             update_cond = update_cond & (F.to_date(F.col("crawled_at")) == F.lit(run_date))
         

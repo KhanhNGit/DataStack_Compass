@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 _DEFAULTS = {
     "SPARK_MASTER": "local[*]",
     "SPARK_DRIVER_MEMORY": "2g",
-    "MINIO_ENDPOINT": "http://localhost:9000",
+    "MINIO_ENDPOINT": os.environ.get("MINIO_ENDPOINT", "http://localhost:9000"),
     "MINIO_ACCESS_KEY": "minioadmin",
     "MINIO_SECRET_KEY": "minioadmin",
 }

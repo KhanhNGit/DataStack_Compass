@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import api from '../config/api';
 import { 
-  ShieldAlert, Shield, ShieldCheck, 
-  Search, ExternalLink, Calendar, 
+  ShieldAlert, Shield, 
+  ExternalLink, Calendar, 
   Tag as TagIcon, X, Filter, 
   BookOpen, ChevronRight, Activity 
 } from 'lucide-react';
@@ -38,51 +39,33 @@ type Blog = {
 
 /* ─── Page ─────────────────────────────────────────────────────────────────── */
 export default function GovernanceKnowledge() {
-  const [allBulletins, setAllBulletins] = useState<Bulletin[]>([]);
-  const [bulletinsLoading, setBulletinsLoading] = useState(false);
   const [bulletinSeverityFilter, setBulletinSeverityFilter] = useState('All');
   const [bulletinToolFilter, setBulletinToolFilter] = useState('All');
   const [selectedBulletin, setSelectedBulletin] = useState<Bulletin | null>(null);
 
-  const [blogs, setBlogs] = useState<Blog[]>([]);
-  const [blogsLoading, setBlogsLoading] = useState(false);
   const [blogToolFilter, setBlogToolFilter] = useState('All');
   const [blogTagFilter, setBlogTagFilter] = useState('All');
 
   // Fetch Bulletins
-  useEffect(() => {
-    const fetchBulletins = async () => {
-      setBulletinsLoading(true);
-      try {
-        const res = await axios.get('/api/v1/governance/bulletins', { params: { page: 1 } });
-        setAllBulletins(res.data.data);
-      } catch (e) {
-        console.error('Failed to fetch bulletins', e);
-      } finally {
-        setBulletinsLoading(false);
-      }
-    };
-    fetchBulletins();
-  }, []);
+  const { data: allBulletins = [], isLoading: bulletinsLoading } = useQuery({
+    queryKey: ['bulletins'],
+    queryFn: async () => {
+      const res = await api.get('/api/v1/governance/bulletins', { params: { page: 1 } });
+      return res.data.data;
+    }
+  });
 
   // Fetch Blogs
-  useEffect(() => {
-    const fetchBlogs = async () => {
-      setBlogsLoading(true);
-      try {
-        const params: any = {};
-        if (blogToolFilter !== 'All') params.tool = blogToolFilter;
-        if (blogTagFilter !== 'All') params.tag = blogTagFilter;
-        const res = await axios.get('/api/v1/governance/blogs', { params });
-        setBlogs(res.data.data);
-      } catch (e) {
-        console.error('Failed to fetch blogs', e);
-      } finally {
-        setBlogsLoading(false);
-      }
-    };
-    fetchBlogs();
-  }, [blogToolFilter, blogTagFilter]);
+  const { data: blogs = [], isLoading: blogsLoading } = useQuery({
+    queryKey: ['blogs', blogToolFilter, blogTagFilter],
+    queryFn: async () => {
+      const params: any = {};
+      if (blogToolFilter !== 'All') params.tool = blogToolFilter;
+      if (blogTagFilter !== 'All') params.tag = blogTagFilter;
+      const res = await api.get('/api/v1/governance/blogs', { params });
+      return res.data.data;
+    }
+  });
 
   // Derived filtered bulletins
   const filteredBulletins = allBulletins.filter(b => {

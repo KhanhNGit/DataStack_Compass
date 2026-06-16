@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { GitCompareArrows, ArrowRight, Route, BarChart3, AlertTriangle, CheckCircle, ShieldAlert, Download, X, Calendar, Lock } from 'lucide-react';
 import axios from 'axios';
 import { useToast } from '../components/Toast/ToastProvider';
 import ExportButton from '../components/ExportButton/ExportButton';
-import { sortVersions } from '../utils/semver';
+import { sortVersions, isVersionNewer } from '../utils/semver';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 /* ─── Types & Mocks ───────────────────────────────────────────────────────── */
@@ -105,62 +106,50 @@ function VersionDiffPanel() {
   const [fromVer, setFromVer] = useState(versions[0] || '');
   const [toVer, setToVer] = useState(versions[versions.length - 1] || '');
 
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<VersionDiffResult | null>(null);
-  const [bcCategories, setBcCategories] = useState<string[]>([]);
-
-  const toggleCategory = (cat: string) => {
-    setBcCategories(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]);
-  };
-
-  // Auto-update versions when tool changes
-  useEffect(() => {
-    const v = sortVersions(TOOL_VERSIONS[tool] || [], false);
-    setFromVer(v[0] || '');
-    setToVer(v[v.length - 1] || '');
-    setResult(null);
-  }, [tool]);
-
-  const handleCompare = async () => {
-    if (!tool || !fromVer || !toVer) return;
-    setLoading(true);
-    try {
+  const compareMutation = useMutation({
+    mutationFn: async () => {
       const res = await axios.get('/api/v1/analysis/version-diff', {
         params: { tool, from: fromVer, to: toVer }
       });
-      const data = res.data.data;
+      return res.data.data;
+    },
+    onSuccess: (data) => {
       setResult({
         breakingChanges: data.diff.new_breaking_changes || [],
         resolvedCVEs: data.diff.resolved_cves?.map((c: any) => c.cve_id) || [],
         newCVEs: data.diff.new_cves?.map((c: any) => ({ id: c.cve_id, cvss: c.cvss_score })) || [],
         configChanges: data.diff.config_changes || [],
-        featureCount: 0, // Not accurately provided by API yet
-        bugFixCount: 0,  // Not accurately provided by API yet
+        featureCount: 0,
+        bugFixCount: 0,
       });
       toast.success('Comparison completed successfully');
-    } catch (e) {
+    },
+    onError: () => {
       toast.warning('Using mock data as API is unavailable');
-      // Mock result as fallback
-      setTimeout(() => {
-        setResult({
-          breakingChanges: [
-            { text: 'Removed deprecated Producer API', category: 'REMOVAL', impact: 'High', action_required: true },
-            { text: 'Changed default partitioner', category: 'BEHAVIOR_CHANGE', impact: 'Low', action_required: false }
-          ],
-          resolvedCVEs: ['CVE-2023-44487', 'CVE-2023-34040'],
-          newCVEs: [{ id: 'CVE-2024-21287', cvss: 8.5 }, { id: 'CVE-2024-21288', cvss: 6.2 }],
-          configChanges: [
-            { key: 'log.retention.hours', type: 'modify', oldVal: '168', newVal: '72', impact_level: 'High' },
-            { key: 'new.feature.enable', type: 'add', newVal: 'true', impact_level: 'Low' },
-            { key: 'old.feature.enable', type: 'remove', impact_level: 'Low' }
-          ],
-          featureCount: 12,
-          bugFixCount: 45
-        });
-        setLoading(false);
-      }, 800);
+      setResult({
+        breakingChanges: [
+          { text: 'Removed deprecated Producer API', category: 'REMOVAL', impact: 'High', action_required: true },
+          { text: 'Changed default partitioner', category: 'BEHAVIOR_CHANGE', impact: 'Low', action_required: false }
+        ],
+        resolvedCVEs: ['CVE-2023-44487', 'CVE-2023-34040'],
+        newCVEs: [{ id: 'CVE-2024-21287', cvss: 8.5 }, { id: 'CVE-2024-21288', cvss: 6.2 }],
+        configChanges: [
+          { key: 'log.retention.hours', type: 'modify', oldVal: '168', newVal: '72', impact_level: 'High' },
+          { key: 'new.feature.enable', type: 'add', newVal: 'true', impact_level: 'Low' },
+          { key: 'old.feature.enable', type: 'remove', impact_level: 'Low' }
+        ],
+        featureCount: 12,
+        bugFixCount: 45
+      });
     }
+  });
+
+  const handleCompare = () => {
+    if (!tool || !fromVer || !toVer || fromVer === toVer) return;
+    compareMutation.mutate();
   };
+
+  const loading = compareMutation.isPending;
 
   return (
     <div className="card p-6 space-y-6 bg-white rounded-xl shadow-sm border border-slate-200">
@@ -204,7 +193,7 @@ function VersionDiffPanel() {
         </div>
         <button 
           onClick={handleCompare}
-          disabled={loading}
+          disabled={loading || fromVer === toVer || !isVersionNewer(fromVer, toVer)}
           className="h-9 px-5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50"
         >
           {loading ? 'Comparing...' : 'Compare'}
@@ -367,72 +356,53 @@ function StackComparePanel() {
   const [selectedTools, setSelectedTools] = useState<string[]>(['apache-kafka', 'apache-spark']);
   const [inputValue, setInputValue] = useState('');
   
-  const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<StackCompareResult[] | null>(null);
-
-  const availableTools = Object.keys(TOOL_VERSIONS).filter(t => !selectedTools.includes(t));
-
-  const addTool = (t: string) => {
-    if (selectedTools.length < 5 && !selectedTools.includes(t)) {
-      setSelectedTools([...selectedTools, t]);
-    }
-    setInputValue('');
-  };
-
-  const removeTool = (t: string) => {
-    setSelectedTools(selectedTools.filter(x => x !== t));
-  };
-
-  const handleCompare = async () => {
-    if (selectedTools.length === 0) return;
-    setLoading(true);
-    try {
+  const compareMutation = useMutation({
+    mutationFn: async () => {
       const res = await axios.get('/api/v1/analysis/stack-comparator', {
         params: { tools: selectedTools.join(',') }
       });
-      setResults(res.data.data);
+      return res.data.data;
+    },
+    onSuccess: (data) => {
+      setResults(data);
       toast.success('Stack comparison successful');
-    } catch (e) {
+    },
+    onError: () => {
       toast.warning('Using mock data as API is unavailable');
-      setTimeout(() => {
-        const mocks: StackCompareResult[] = selectedTools.map(t => {
-          const sorted = sortVersions(TOOL_VERSIONS[t] || []);
-          return {
-            tool: t,
-            latestVersion: sorted[0] || '1.0.0',
-            license: 'Apache 2.0',
-            eolDate: t === 'apache-kafka' ? '2025-12-31' : t === 'apache-flink' ? '2025-06-30' : '2026-12-31',
-            criticalCVEs: t === 'apache-spark' ? 2 : t === 'apache-kafka' ? 1 : 0,
-            javaRequired: '11+',
-            scalaVersion: t === 'apache-spark' ? '2.12/2.13' : '-'
-          };
-        });
-        setResults(mocks);
-        setLoading(false);
-      }, 800);
+      const mocks: StackCompareResult[] = selectedTools.map(t => {
+        const sorted = sortVersions(TOOL_VERSIONS[t] || []);
+        return {
+          tool: t,
+          latestVersion: sorted[0] || '1.0.0',
+          license: 'Apache 2.0',
+          eolDate: t === 'apache-kafka' ? '2025-12-31' : t === 'apache-flink' ? '2025-06-30' : '2026-12-31',
+          criticalCVEs: t === 'apache-spark' ? 2 : t === 'apache-kafka' ? 1 : 0,
+          javaRequired: '11+',
+          scalaVersion: t === 'apache-spark' ? '2.12/2.13' : '-'
+        };
+      });
+      setResults(mocks);
     }
+  });
+
+  const handleCompare = () => {
+    if (selectedTools.length === 0) return;
+    compareMutation.mutate();
   };
 
-  const handleExport = () => {
-    if (!results) return;
+  const loading = compareMutation.isPending;
+
+  const handleExportFormatter = (data: StackCompareResult[]) => {
     const rows = [
-      ['Metric', ...results.map(r => r.tool)],
-      ['Latest Version', ...results.map(r => r.latestVersion)],
-      ['License', ...results.map(r => r.license)],
-      ['EOL Date', ...results.map(r => r.eolDate)],
-      ['Critical CVEs', ...results.map(r => r.criticalCVEs.toString())],
-      ['Java Required', ...results.map(r => r.javaRequired)],
-      ['Scala Version', ...results.map(r => r.scalaVersion)],
+      ['Metric', ...data.map(r => r.tool)],
+      ['Latest Version', ...data.map(r => r.latestVersion)],
+      ['License', ...data.map(r => r.license)],
+      ['EOL Date', ...data.map(r => r.eolDate)],
+      ['Critical CVEs', ...data.map(r => r.criticalCVEs.toString())],
+      ['Java Required', ...data.map(r => r.javaRequired)],
+      ['Scala Version', ...data.map(r => r.scalaVersion)],
     ];
-    const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "stack_comparison.csv");
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    toast.success('CSV exported successfully');
+    return rows.map(e => e.join(",")).join("\n");
   };
 
   const maxCVEs = results ? Math.max(...results.map(r => r.criticalCVEs)) : 0;
@@ -448,10 +418,15 @@ function StackComparePanel() {
           </p>
         </div>
         {results && (
-          <button onClick={handleExport} className="flex items-center gap-2 h-9 px-4 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm">
-            <Download size={16} />
-            Export CSV
-          </button>
+          <ExportButton
+            data={results}
+            columns={{}} // Unused with customFormatter
+            filename="stack_comparison"
+            format="csv"
+            label="Export CSV"
+            className="flex items-center gap-2 h-9 px-4 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+            customFormatter={handleExportFormatter}
+          />
         )}
       </div>
 
@@ -791,24 +766,13 @@ function UpgradePathPanel() {
 /* ─── EOL Impact Assessment panel ─────────────────────────────────────────── */
 function EolAssessmentPanel() {
   const toast = useToast();
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    fetchEolData();
-  }, []);
-
-  const fetchEolData = async () => {
-    setLoading(true);
-    try {
+  const { data = [], isLoading: loading } = useQuery({
+    queryKey: ['eolTimeline'],
+    queryFn: async () => {
       const res = await axios.get('/api/v1/assets/eol-timeline');
-      setData(res.data.data);
-    } catch (e) {
-      toast.error('Failed to load EOL timeline data');
-    } finally {
-      setLoading(false);
+      return res.data.data;
     }
-  };
+  });
 
   const getBarColor = (days: number) => {
     if (days > 180) return '#10b981'; // Green
@@ -817,14 +781,12 @@ function EolAssessmentPanel() {
     return '#ef4444'; // Red
   };
 
-  const handleExportCSV = () => {
-    if (!data.length) return;
-    
+  const handleExportFormatter = (dataList: any[]) => {
     const rows = [
       ['Tool', 'Current Version', 'EOL Date', 'Days Remaining', 'Recommended Action']
     ];
     
-    data.forEach(item => {
+    dataList.forEach(item => {
       const action = item.days_remaining < 30 ? 'Immediate Upgrade Required' : 
                      item.days_remaining < 90 ? 'Plan Upgrade Soon' : 'Monitor';
       rows.push([
@@ -836,36 +798,6 @@ function EolAssessmentPanel() {
       ]);
     });
     
-    const csvContent = "data:text/csv;charset=utf-8," + rows.map(e => e.join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "eol_assessment_report.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('EOL Report exported successfully');
-  };
-
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const p = payload[0].payload;
-      return (
-        <div className="bg-slate-900 text-white p-3 rounded-lg shadow-xl text-sm border border-slate-700 min-w-[200px]">
-          <p className="font-bold mb-1 text-indigo-300">{p.tool_name}</p>
-          <p className="text-slate-300">Version: <span className="text-white font-medium">{p.version_in_use}</span></p>
-          <p className="text-slate-300">EOL Date: <span className="text-white font-medium">{p.eol_date ? new Date(p.eol_date).toLocaleDateString() : 'N/A'}</span></p>
-          <p className="text-slate-300">Days Left: <span className="text-white font-medium">{p.days_remaining}</span></p>
-          
-          <div className="mt-3 pt-3 border-t border-slate-700 flex flex-col gap-2">
-            <a href={`/catalog/${p.tool_name}`} className="text-indigo-400 hover:text-indigo-300 text-xs font-medium flex items-center gap-1">
-              Check Latest Versions <ArrowRight size={12} />
-            </a>
-          </div>
-        </div>
-      );
-    }
-    return null;
   };
 
   return (
@@ -877,14 +809,17 @@ function EolAssessmentPanel() {
             Evaluate all team assets against their End-of-Life deadlines
           </p>
         </div>
-        <button 
-          onClick={handleExportCSV}
-          disabled={!data.length}
-          className="flex items-center gap-2 h-9 px-4 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
-        >
-          <Download size={16} />
-          Export EOL Report
-        </button>
+        {data.length > 0 && (
+          <ExportButton
+            data={data}
+            columns={{}} // Unused with customFormatter
+            filename="eol_assessment_report"
+            format="csv"
+            label="Export EOL Report"
+            className="flex items-center gap-2 h-9 px-4 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+            customFormatter={handleExportFormatter}
+          />
+        )}
       </div>
 
       {loading ? (
@@ -922,3 +857,44 @@ function EolAssessmentPanel() {
     </div>
   );
 }
+
+const handleExportFormatter = (dataList: any[]) => {
+  const rows = [
+    ['Tool', 'Current Version', 'EOL Date', 'Days Remaining', 'Recommended Action']
+  ];
+  
+  dataList.forEach(item => {
+    const action = item.days_remaining < 30 ? 'Immediate Upgrade Required' : 
+                   item.days_remaining < 90 ? 'Plan Upgrade Soon' : 'Monitor';
+    rows.push([
+      item.tool_name, 
+      item.version_in_use, 
+      item.eol_date ? new Date(item.eol_date).toISOString().split('T')[0] : 'N/A', 
+      item.days_remaining?.toString() || '0', 
+      action
+    ]);
+  });
+  
+  return rows.map(e => e.join(",")).join("\n");
+};
+
+const CustomTooltip = ({ active, payload }: any) => {
+  if (active && payload && payload.length) {
+    const p = payload[0].payload;
+    return (
+      <div className="bg-slate-900 text-white p-3 rounded-lg shadow-xl text-sm border border-slate-700 min-w-[200px]">
+        <p className="font-bold mb-1 text-indigo-300">{p.tool_name}</p>
+        <p className="text-slate-300">Version: <span className="text-white font-medium">{p.version_in_use}</span></p>
+        <p className="text-slate-300">EOL Date: <span className="text-white font-medium">{p.eol_date ? new Date(p.eol_date).toLocaleDateString() : 'N/A'}</span></p>
+        <p className="text-slate-300">Days Left: <span className="text-white font-medium">{p.days_remaining}</span></p>
+        
+        <div className="mt-3 pt-3 border-t border-slate-700 flex flex-col gap-2">
+          <a href={`/catalog/${p.tool_name}`} className="text-indigo-400 hover:text-indigo-300 text-xs font-medium flex items-center gap-1">
+            Check Latest Versions <ArrowRight size={12} />
+          </a>
+        </div>
+      </div>
+    );
+  }
+  return null;
+};

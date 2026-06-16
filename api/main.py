@@ -23,14 +23,12 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
-from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from api.database import check_db_connection, close_pool
-from api.models.response import BaseResponse
 from api.routers import analysis, cves, governance, tools, assets, search
 
 # =============================================================================

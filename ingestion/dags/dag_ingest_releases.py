@@ -33,7 +33,6 @@ from typing import Any, Dict, List
 
 from airflow.decorators import dag, task
 from airflow.exceptions import AirflowException
-from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 
 # ─── Đảm bảo project root nằm trên sys.path ────────────────────────────────
 # Airflow mount DAGs tại /opt/airflow/dags (= ingestion/dags).

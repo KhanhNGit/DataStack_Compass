@@ -7,7 +7,6 @@ Categories: API_CHANGE, CONFIG_CHANGE, BEHAVIOR_CHANGE, REMOVAL, DEPENDENCY_CHAN
 Impact: High, Medium, Low
 """
 
-import re
 from typing import Dict, Any
 from pyspark.sql.functions import udf
 from pyspark.sql.types import StructType, StructField, StringType, BooleanType

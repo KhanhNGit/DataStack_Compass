@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from api.database import execute_query, execute_query_one, get_db
+from api.database import get_db
 from api.models.response import BaseResponse
 
 logger = logging.getLogger(__name__)

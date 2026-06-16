@@ -41,7 +41,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from airflow.decorators import dag, task
-from airflow.exceptions import AirflowException
 from airflow.operators.python import ShortCircuitOperator
 
 # ─── Project root trên sys.path ─────────────────────────────────────────────

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pymysql.connections import Connection
 
 from api.database import get_db
-from api.models.response import BaseResponse, CVEItem, PaginatedResponse, CVEStats
+from api.models.response import BaseResponse, PaginatedResponse
 
 logger = logging.getLogger(__name__)
 

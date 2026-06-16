@@ -36,6 +36,7 @@ default_args = {
     schedule="0 8 * * 1",  # Thứ Hai hàng tuần
     start_date=datetime(2024, 1, 1),
     catchup=False,
+    max_active_runs=1,
     tags=["compass", "ingestion", "blogs"],
 )
 def dag_ingest_blogs():
@@ -43,8 +44,6 @@ def dag_ingest_blogs():
     @task
     def fetch_and_upsert_blogs() -> list[str]:
         """Fetch RSS feeds and upsert directly to silver_blogs."""
-        from pyspark.sql import SparkSession
-        from pyspark.sql.types import StructType, StructField, StringType, ArrayType, TimestampType
         from processing.spark_utils.session import get_spark_session
         from storage.delta.schemas import SCHEMAS
         

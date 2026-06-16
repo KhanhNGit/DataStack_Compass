@@ -68,6 +68,10 @@ services:
       "
     networks:
       - datastack-net
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     restart: on-failure
 
   # ---------------------------------------------------------------------------
@@ -148,6 +152,10 @@ services:
           --lastname User ||
         true
       "
+    deploy:
+      resources:
+        limits:
+          memory: 128M
     restart: on-failure
 
   # ---------------------------------------------------------------------------
@@ -166,6 +174,12 @@ services:
       resources:
         limits:
           memory: 1G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # ---------------------------------------------------------------------------
   # Airflow Scheduler — DAG execution
@@ -181,6 +195,12 @@ services:
       resources:
         limits:
           memory: 1G
+    healthcheck:
+      test: ["CMD-SHELL", "airflow jobs check --job-type SchedulerJob --hostname \"$${HOSTNAME}\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
 # =============================================================================
 # Networks

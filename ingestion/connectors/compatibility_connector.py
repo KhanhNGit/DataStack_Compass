@@ -52,10 +52,12 @@ class CompatibilityMatrixConnector(BaseConnector):
                     for item in data:
                         # so sánh prefix
                         if item.get("version", "").startswith(version) or version == "latest":
-                            item["source_url"] = f"file://{static_file}"
+                            bucket = os.environ.get("MINIO_BUCKET_SILVER", "silver")
+                            item["source_url"] = f"s3a://{bucket}/configs/compatibility_matrices/{tool_name}.json"
                             return item
                 elif isinstance(data, dict):
-                    data["source_url"] = f"file://{static_file}"
+                    bucket = os.environ.get("MINIO_BUCKET_SILVER", "silver")
+                    data["source_url"] = f"s3a://{bucket}/configs/compatibility_matrices/{tool_name}.json"
                     return data
                     
             except Exception as e:

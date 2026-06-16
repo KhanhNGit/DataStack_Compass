@@ -58,7 +58,7 @@ def get_s3_client():
 @dag(
     dag_id="sync_asset_inventory",
     description="Đồng bộ Asset Inventory từ MinIO vào StarRocks (UPSERT)",
-    schedule="@daily",
+    schedule="0 0 * * *",
     start_date=datetime(2024, 1, 1),
     catchup=False,
     max_active_runs=1,
