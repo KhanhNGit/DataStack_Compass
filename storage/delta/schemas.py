@@ -58,6 +58,7 @@ bronze_raw_releases = StructType([
     StructField("crawled_at", TimestampType(), nullable=False),
     StructField("source_type", StringType(), nullable=False),
     # source_type ∈ {"github", "jira", "official_docs"}
+    StructField("processed", BooleanType(), nullable=False),
 ])
 
 # =============================================================================

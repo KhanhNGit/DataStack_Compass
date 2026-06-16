@@ -4,7 +4,12 @@ import requests
 import pymysql
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from packaging.version import parse as parse_version
+import sys
+
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+from processing.spark_utils.semver import is_version_affected
 
 class AlertingService:
     def __init__(self):
@@ -42,37 +47,24 @@ class AlertingService:
             print(f"Error fetching asset inventory: {e}")
             return []
 
-    def _match_single_version(self, version_in_use: str, affected_version: str) -> bool:
-        """
-        Perform semantic version matching between the version in use and the affected version string.
-        """
-        affected_version = affected_version.strip()
-        op = "=="
-        val = affected_version
+    def _record_alert(self, alert_type: str, matches: list, recipients: set):
+        if not matches: return
+        tool_names = set(m['asset'].get('tool_name', 'unknown') for m in matches)
+        is_critical = any(m['is_critical'] for m in matches)
+        severity = 'Critical' if is_critical else 'High'
+        recipients_str = ', '.join(recipients)[:1000]
         
-        for operator in ["<=", ">=", "==", "<", ">"]:
-            if affected_version.startswith(operator):
-                op = operator
-                val = affected_version[len(operator):].strip()
-                break
-        
-        if op == "==" and not affected_version.startswith("=="):
-            val = affected_version
-
         try:
-            v_use = parse_version(version_in_use)
-            v_aff = parse_version(val)
-            
-            if op == "==": return v_use == v_aff
-            if op == "<=": return v_use <= v_aff
-            if op == ">=": return v_use >= v_aff
-            if op == "<": return v_use < v_aff
-            if op == ">": return v_use > v_aff
-        except Exception:
-            # Fallback to direct string comparison if parsing fails
-            return version_in_use == val
-
-        return False
+            with self._get_db_connection() as conn:
+                with conn.cursor() as cursor:
+                    for tool in tool_names:
+                        cves_for_tool = [m['cve'].get('cve_id') for m in matches if m['asset'].get('tool_name') == tool]
+                        cursor.execute("""
+                            INSERT INTO alert_history (alert_type, tool_name, cve_ids, severity, recipients)
+                            VALUES (%s, %s, %s, %s, %s)
+                        """, (alert_type, tool, ', '.join(set(cves_for_tool))[:2000], severity, recipients_str))
+        except Exception as e:
+            print(f"Error inserting into alert_history: {e}")
 
     def match_cves_to_assets(self, new_cves: list, assets: list) -> list[dict]:
         """
@@ -84,7 +76,7 @@ class AlertingService:
             for cve in new_cves:
                 if asset.get('tool_name', '').lower() == cve.get('tool_name', '').lower():
                     for aff_ver in cve.get('affected_versions', []):
-                        if self._match_single_version(asset.get('version_in_use', ''), aff_ver):
+                        if is_version_affected(asset.get('version_in_use', ''), aff_ver):
                             severity = str(cve.get('severity', '')).lower()
                             cvss = float(cve.get('cvss', 0.0))
                             is_critical = severity in ['critical', 'high'] or cvss >= 7.0
@@ -164,6 +156,7 @@ class AlertingService:
                 
                 all_recipients = [msg['To']] + list(cc_emails)
                 server.sendmail(msg['From'], all_recipients, msg.as_string())
+                self._record_alert('email', matches, set(all_recipients))
         except Exception as e:
             print(f"Failed to send email alert: {e}")
 
@@ -206,5 +199,6 @@ class AlertingService:
         try:
             response = requests.post(webhook_url, json=payload, timeout=10)
             response.raise_for_status()
+            self._record_alert('webhook', matches, {webhook_url})
         except Exception as e:
             print(f"Failed to send webhook: {e}")

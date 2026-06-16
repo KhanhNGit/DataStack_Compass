@@ -1,71 +1,92 @@
-import os
-import json
-from fastapi import APIRouter, Query
+import logging
 from typing import Optional
+
+from fastapi import APIRouter, Depends, Query
+from pymysql.connections import Connection
+
+from api.database import get_db
+from api.models.response import BaseResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/governance", tags=["governance"])
 
-def load_fixture(filename: str):
-    filepath = os.path.join(os.path.dirname(__file__), '..', 'fixtures', filename)
-    if os.path.exists(filepath):
-        with open(filepath, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return []
-
-@router.get("/bulletins")
-def get_bulletins(page: int = 1, severity: Optional[str] = None):
-    env = os.getenv("ENV", "dev").lower()
-    
-    if env == "prod":
-        # Placeholder for StarRocks query in production
-        # Example: data = db.query("SELECT * FROM security_bulletins WHERE ...")
-        return {"data": [], "meta": {"page": page, "source": "starrocks"}, "errors": []}
-    
-    # Dev mode: use fixtures
-    data = load_fixture("bulletins.json")
-    
-    # Apply severity filter
-    if severity and severity != "All":
-        data = [item for item in data if item.get("severity") == severity]
-        
-    # Basic pagination logic
+@router.get("/bulletins", response_model=BaseResponse)
+async def get_bulletins(
+    page: int = Query(1, ge=1), 
+    severity: Optional[str] = None,
+    db: Connection = Depends(get_db)
+):
     per_page = 10
-    start = (page - 1) * per_page
-    end = start + per_page
-    paginated = data[start:end]
+    offset = (page - 1) * per_page
     
-    return {
-        "data": paginated,
-        "meta": {
-            "page": page,
-            "total_count": len(data),
-            "source": "fixtures"
-        },
-        "errors": []
-    }
-
-@router.get("/blogs")
-def get_blogs(tool: Optional[str] = None, tag: Optional[str] = None):
-    env = os.getenv("ENV", "dev").lower()
+    where_clause = ""
+    params = []
     
-    if env == "prod":
-        # Placeholder for StarRocks query in production
-        return {"data": [], "meta": {"source": "starrocks"}, "errors": []}
+    if severity and severity != "All":
+        where_clause = "WHERE severity = %s"
+        params.append(severity)
         
-    data = load_fixture("blogs.json")
+    sql = f"""
+        SELECT cve_id, tool_name, severity, cvss_score, description, published_at, affected_versions, fixed_in_version
+        FROM minio_delta_catalog.silver.silver_cves
+        {where_clause}
+        ORDER BY published_at DESC, cvss_score DESC
+        LIMIT %s OFFSET %s
+    """
     
-    # Apply filters
+    count_sql = f"SELECT COUNT(*) as count FROM minio_delta_catalog.silver.silver_cves {where_clause}"
+    
+    with db.cursor() as cursor:
+        cursor.execute(count_sql, tuple(params))
+        total_count = cursor.fetchone()["count"]
+        
+        cursor.execute(sql, tuple(params + [per_page, offset]))
+        rows = cursor.fetchall()
+        
+    return BaseResponse(
+        data=rows,
+        meta={
+            "page": page,
+            "total_count": total_count,
+            "source": "starrocks"
+        }
+    )
+
+@router.get("/blogs", response_model=BaseResponse)
+async def get_blogs(
+    tool: Optional[str] = None, 
+    tag: Optional[str] = None,
+    db: Connection = Depends(get_db)
+):
+    where_clauses = []
+    params = []
+    
     if tool and tool != "All":
-        data = [item for item in data if item.get("tool") == tool]
+        where_clauses.append("tool_name = %s")
+        params.append(tool)
         
     if tag and tag != "All":
-        data = [item for item in data if tag in item.get("tags", [])]
+        where_clauses.append("array_contains(tags, %s)")
+        params.append(tag)
         
-    return {
-        "data": data,
-        "meta": {
-            "total_count": len(data),
-            "source": "fixtures"
-        },
-        "errors": []
-    }
+    where_stmt = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+    
+    sql = f"""
+        SELECT tool_name, title, url, published_date, summary, tags, source_feed
+        FROM minio_delta_catalog.silver.silver_blogs
+        {where_stmt}
+        ORDER BY published_date DESC
+    """
+    
+    with db.cursor() as cursor:
+        cursor.execute(sql, tuple(params))
+        rows = cursor.fetchall()
+        
+    return BaseResponse(
+        data=rows,
+        meta={
+            "total_count": len(rows),
+            "source": "starrocks"
+        }
+    )

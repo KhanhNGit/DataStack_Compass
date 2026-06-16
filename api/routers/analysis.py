@@ -342,7 +342,7 @@ async def version_diff(
 
     # ── Validate versions exist ──────────────────────────────────────────
     check_sql = f"""
-        SELECT version, release_date, breaking_changes, breaking_changes_enriched, deprecated_apis
+        SELECT version, release_date, breaking_changes, breaking_changes_enriched, deprecated_apis, issues
         FROM {_SILVER_RELEASES}
         WHERE tool_name = %s AND version IN (%s, %s)
     """
@@ -366,7 +366,7 @@ async def version_diff(
 
     # ── All intermediate releases (from, to] ─────────────────────────────
     all_releases_sql = f"""
-        SELECT version, release_date, breaking_changes, breaking_changes_enriched, deprecated_apis
+        SELECT version, release_date, breaking_changes, breaking_changes_enriched, deprecated_apis, issues
         FROM {_SILVER_RELEASES}
         WHERE tool_name = %s
         ORDER BY version ASC
@@ -402,6 +402,14 @@ async def version_diff(
 
         dep = _parse_json_field(rel.get("deprecated_apis"))
         all_deprecated.extend(dep)
+
+        issues = _parse_json_field(rel.get("issues"))
+        for issue in issues:
+            itype = str(issue.get("type", "")).lower()
+            if "feature" in itype:
+                new_features_count += 1
+            elif "bug" in itype or "fix" in itype:
+                bug_fixes_count += 1
 
     # ── CVE analysis ─────────────────────────────────────────────────────
     cves_sql = f"""
@@ -499,6 +507,8 @@ async def version_diff(
             "config_changes": config_changes,
             "versions_with_breaking_changes": versions_with_breaking,
             "total_intermediate_releases": len(intermediate_releases),
+            "featureCount": new_features_count,
+            "bugFixCount": bug_fixes_count,
         },
     }
 

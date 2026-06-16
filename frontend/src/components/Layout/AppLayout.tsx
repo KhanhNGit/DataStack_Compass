@@ -15,6 +15,7 @@ import {
   X,
   Loader2,
   Tag,
+  Network,
 } from 'lucide-react';
 import api from '../../config/api';
 import { usePreferences } from '../../hooks/usePreferences';
@@ -23,6 +24,7 @@ import { usePreferences } from '../../hooks/usePreferences';
 const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/catalog', label: 'Tech Catalog', icon: Database },
+  { to: '/catalog/dependency-graph', label: 'Dependency Graph', icon: Network },
   { to: '/analysis', label: 'Analysis Workspace', icon: GitCompareArrows },
   { to: '/governance', label: 'Governance & Knowledge', icon: Shield },
 ] as const;
@@ -220,8 +222,6 @@ export default function AppLayout() {
             </NavLink>
           ))}
         </nav>
-
-        </button>
       </aside>
 
       {/* ═══ Main area ═══ */}

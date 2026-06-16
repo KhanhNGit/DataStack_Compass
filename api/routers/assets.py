@@ -37,7 +37,13 @@ async def asset_risk_overview(db: Connection = Depends(get_db)):
             a.environment,
             g.eol_date,
             COUNT(CASE WHEN c.severity = 'Critical' THEN 1 END) AS critical_cves_count,
-            COUNT(CASE WHEN c.severity = 'High' THEN 1 END) AS high_cves_count
+            COUNT(CASE WHEN c.severity = 'High' THEN 1 END) AS high_cves_count,
+            CASE
+                WHEN COUNT(CASE WHEN c.severity = 'Critical' THEN 1 END) > 0 THEN 'critical'
+                WHEN COUNT(CASE WHEN c.severity = 'High' THEN 1 END) > 3 THEN 'high'
+                WHEN COUNT(CASE WHEN c.severity = 'High' THEN 1 END) > 0 THEN 'medium'
+                ELSE 'low'
+            END AS risk_level
         FROM compass_internal.asset_inventory a
         LEFT JOIN minio_delta_catalog.gold.gold_tool_summary g 
             ON a.tool_name = g.tool_name

@@ -293,6 +293,7 @@ def transform_releases(
         bronze_df = (
             spark.read.format("delta").load(bronze_uri)
             .filter(F.col("tool_name") == tool_name)
+            .filter(F.col("processed") == False)
         )
     except Exception as exc:
         logger.error("Failed to read bronze table at %s: %s", bronze_uri, exc)
@@ -525,6 +526,20 @@ def transform_releases(
             .save(silver_uri)
         )
         logger.info("  ✓ Created silver_releases with %d records", upserted)
+
+    # ─── Step 7: Update bronze records as processed ───────────────────────
+    logger.info("Step 7/7 — Updating bronze records as processed")
+    if DeltaTable.isDeltaTable(spark, bronze_uri):
+        bronze_table = DeltaTable.forPath(spark, bronze_uri)
+        update_cond = (F.col("tool_name") == tool_name) & (F.col("processed") == False)
+        if run_date:
+            update_cond = update_cond & (F.to_date(F.col("crawled_at")) == F.lit(run_date))
+        
+        bronze_table.update(
+            condition=update_cond,
+            set={"processed": F.lit(True)}
+        )
+        logger.info("  ✓ Updated processed=True in bronze_raw_releases")
 
     # ─── Summary ─────────────────────────────────────────────────────────
     stats = {
