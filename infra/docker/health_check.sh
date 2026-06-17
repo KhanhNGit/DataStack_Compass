@@ -65,6 +65,15 @@ check "Airflow Webserver" \
 check "Postgres (Airflow DB)" \
   docker exec datastack-postgres pg_isready -U airflow -q
 
+# ── 4. Application Layer ────────────────────────────────────────────────────
+echo ""
+echo -e "${BOLD}▸ Application Layer${RESET}"
+check "FastAPI Backend" \
+  curl -sf --max-time 5 http://localhost:8000/health
+
+check "Frontend (React)" \
+  curl -sf --max-time 5 -o /dev/null http://localhost:3000
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo ""
 echo -e "──────────────────────────────────────────────────"
@@ -75,7 +84,7 @@ else
   exit 1
 fi
 
-# ── 4. Docker Memory Usage ──────────────────────────────────────────────────
+# ── 5. Docker Memory Usage ──────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}▸ Docker Memory Usage${RESET}"
 echo ""

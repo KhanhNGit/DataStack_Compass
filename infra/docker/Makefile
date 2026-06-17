@@ -37,6 +37,10 @@ up-storage:
 up-airflow:
 	$(COMPOSE) up -d postgres airflow-init airflow-webserver airflow-scheduler
 
+## Start only Application stack (FastAPI + Frontend)
+up-app:
+	$(COMPOSE) up -d fastapi frontend
+
 ## Follow logs for a specific service (usage: make log-service SVC=minio)
 log-service:
 	$(COMPOSE) logs -f $(SVC)
