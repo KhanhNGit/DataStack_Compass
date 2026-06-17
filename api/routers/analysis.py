@@ -353,11 +353,15 @@ async def version_diff(
         )
 
     # ── All intermediate releases (from, to] ─────────────────────────────
+    # B-4: Can't filter at SQL level because we need all intermediate versions
+    # between from_version and to_version (not just the two endpoints).
+    # Added LIMIT 500 as safety cap.
     all_releases_sql = f"""
         SELECT version, release_date, breaking_changes, breaking_changes_enriched, deprecated_apis, issues
         FROM {_SILVER_RELEASES}
         WHERE tool_name = %s
         ORDER BY version ASC
+        LIMIT 500
     """
     with db.cursor() as cursor:
         cursor.execute(all_releases_sql, (tool,))
@@ -406,6 +410,7 @@ async def version_diff(
         FROM {_SILVER_CVES}
         WHERE tool_name = %s
         ORDER BY cvss_score DESC
+        LIMIT 200
     """
     with db.cursor() as cursor:
         cursor.execute(cves_sql, (tool,))
@@ -613,33 +618,34 @@ async def stack_comparator(
         cve_by_tool[tn][row["severity"]] = row["count"]
 
     # ── Compatibility / dependencies per tool ────────────────────────────
+    # B-6: Single batched query instead of N+1 per-tool queries
     deps_by_tool: Dict[str, Any] = {}
     try:
-        # Lấy dependencies cho latest version mỗi tool
-        for row in gold_rows:
-            tn = row["tool_name"]
-            ver = row.get("latest_version")
-            if not ver:
-                continue
-
+        tool_names_with_version = [
+            row["tool_name"] for row in gold_rows
+            if row.get("latest_version")
+        ]
+        if tool_names_with_version:
+            dep_placeholders = ", ".join(["%s"] * len(tool_names_with_version))
             dep_sql = f"""
-                SELECT dependencies
+                SELECT tool_name, version, dependencies
                 FROM {_SILVER_COMPAT}
-                WHERE tool_name = %s AND version = %s
-                LIMIT 1
+                WHERE tool_name IN ({dep_placeholders})
             """
             with db.cursor() as cursor:
-                cursor.execute(dep_sql, (tn, ver))
-                dep_row = cursor.fetchone()
+                cursor.execute(dep_sql, tuple(tool_names_with_version))
+                dep_rows = cursor.fetchall()
 
-            if dep_row and dep_row.get("dependencies"):
-                deps = dep_row["dependencies"]
-                if isinstance(deps, str):
-                    try:
-                        deps = json.loads(deps)
-                    except (json.JSONDecodeError, TypeError):
-                        deps = {}
-                deps_by_tool[tn] = deps
+            for dep_row in dep_rows:
+                tn = dep_row["tool_name"]
+                if dep_row.get("dependencies"):
+                    deps = dep_row["dependencies"]
+                    if isinstance(deps, str):
+                        try:
+                            deps = json.loads(deps)
+                        except (json.JSONDecodeError, TypeError):
+                            deps = {}
+                    deps_by_tool[tn] = deps
     except Exception:
         logger.debug("silver_compatibility not accessible — skipping")
 
@@ -915,10 +921,12 @@ async def config_diff(
     if cached is not None:
         return BaseResponse(data=cached, meta={"cached": True})
 
+    # B-5: LIMIT 500 safety cap. Semver range filtering in Python below.
     sql = f"""
         SELECT to_version, param_name, old_default, new_default, change_type, impact_level
         FROM {_SILVER_CONFIG}
         WHERE tool_name = %s
+        LIMIT 500
     """
     with db.cursor() as cursor:
         cursor.execute(sql, (tool,))

@@ -202,6 +202,62 @@ services:
       retries: 5
       start_period: 30s
 
+  # ---------------------------------------------------------------------------
+  # FastAPI Backend — REST API on port 8000
+  # ---------------------------------------------------------------------------
+  fastapi:
+    build:
+      context: ../..
+      dockerfile: api/Dockerfile
+    container_name: datastack-fastapi
+    depends_on:
+      starrocks:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      STARROCKS_HOST: starrocks
+      STARROCKS_PORT: "9030"
+      STARROCKS_USER: root
+      STARROCKS_PASSWORD: ""
+      STARROCKS_DATABASE: ""
+      DB_POOL_SIZE: "5"
+      FRONTEND_ORIGIN: "http://localhost:3000"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - datastack-net
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Frontend — ReactJS served by Nginx on port 3000
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+    container_name: datastack-frontend
+    depends_on:
+      fastapi:
+        condition: service_healthy
+    ports:
+      - "3000:80"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    networks:
+      - datastack-net
+    restart: unless-stopped
+
 # =============================================================================
 # Networks
 # =============================================================================

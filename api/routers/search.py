@@ -3,18 +3,19 @@ DataStack Compass — Universal Search Router
 ============================================
 
 API /api/v1/search?q={query}&type={all|tool|cve|version}
-Chạy đồng thời 3 queries trên StarRocks qua asyncio.gather,
+Chạy 3 queries tuần tự trên cùng một pool connection,
 tổng hợp và sắp xếp theo: CVE (critical lên đầu) -> Tools -> Versions.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
+from typing import List
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
+from pymysql.connections import Connection
 
-from api.database import execute_query
+from api.database import get_db
 from api.models.response import BaseResponse
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,13 @@ def _sanitize_like_input(value: str) -> str:
     return value.replace("%", "").replace("_", " ").replace(";", "").strip()
 
 
+def _run_query(db: Connection, sql: str, params: tuple) -> List[dict]:
+    """Run a single query on the shared connection."""
+    with db.cursor() as cursor:
+        cursor.execute(sql, params)
+        return cursor.fetchall()
+
+
 @router.get(
     "/",
     summary="Universal Search",
@@ -43,10 +51,11 @@ def _sanitize_like_input(value: str) -> str:
 async def universal_search(
     q: str = Query(..., min_length=1, max_length=200, description="Search query"),
     type: str = Query("all", pattern="^(all|tool|cve|version)$", description="Filter by result type"),
+    db: Connection = Depends(get_db),
 ):
     """
     Tìm kiếm universal kết hợp Tools, CVEs, Versions.
-    Thực thi tối đa 3 câu SQL đồng thời qua connection pool.
+    Runs sequentially on a single pool connection to avoid pool exhaustion.
     """
     sanitized_q = _sanitize_like_input(q)
     if not sanitized_q:
@@ -56,27 +65,9 @@ async def universal_search(
         )
     like_pattern = f"%{sanitized_q}%"
 
-    tasks = []
+    all_results = []
 
-    # execute_query manages its own pool connection — safe for asyncio.to_thread
-    def run_query(sql, params):
-        return execute_query(sql, params)
-
-    # 1. Tools query
-    if type in ("all", "tool"):
-        sql_tools = f"""
-            SELECT tool_name, latest_version, 'tool' as result_type,
-                   tool_name as display_title,
-                   CONCAT('Latest: ', IFNULL(latest_version, 'N/A')) as display_subtitle
-            FROM {_GOLD_SUMMARY}
-            WHERE tool_name LIKE %s
-            LIMIT 5
-        """
-        tasks.append(asyncio.to_thread(run_query, sql_tools, (like_pattern,)))
-    else:
-        tasks.append(asyncio.to_thread(lambda: []))
-
-    # 2. CVEs query
+    # 1. CVEs query (highest priority in results)
     if type in ("all", "cve"):
         sql_cves = f"""
             SELECT cve_id, tool_name, severity, cvss_score, 'cve' as result_type,
@@ -87,9 +78,19 @@ async def universal_search(
             ORDER BY cvss_score DESC
             LIMIT 5
         """
-        tasks.append(asyncio.to_thread(run_query, sql_cves, (like_pattern, like_pattern)))
-    else:
-        tasks.append(asyncio.to_thread(lambda: []))
+        all_results.extend(_run_query(db, sql_cves, (like_pattern, like_pattern)))
+
+    # 2. Tools query
+    if type in ("all", "tool"):
+        sql_tools = f"""
+            SELECT tool_name, latest_version, 'tool' as result_type,
+                   tool_name as display_title,
+                   CONCAT('Latest: ', IFNULL(latest_version, 'N/A')) as display_subtitle
+            FROM {_GOLD_SUMMARY}
+            WHERE tool_name LIKE %s
+            LIMIT 5
+        """
+        all_results.extend(_run_query(db, sql_tools, (like_pattern,)))
 
     # 3. Versions query
     if type in ("all", "version"):
@@ -102,18 +103,7 @@ async def universal_search(
             ORDER BY release_date DESC
             LIMIT 5
         """
-        tasks.append(asyncio.to_thread(run_query, sql_versions, (like_pattern, like_pattern)))
-    else:
-        tasks.append(asyncio.to_thread(lambda: []))
-
-    # Chạy song song 3 query
-    results_tools, results_cves, results_versions = await asyncio.gather(*tasks)
-
-    # Gộp kết quả theo thứ tự ưu tiên: CVE -> Tool -> Version
-    all_results = []
-    all_results.extend(results_cves)
-    all_results.extend(results_tools)
-    all_results.extend(results_versions)
+        all_results.extend(_run_query(db, sql_versions, (like_pattern, like_pattern)))
 
     return BaseResponse(
         data={
@@ -123,3 +113,4 @@ async def universal_search(
         },
         meta={"type_filter": type},
     )
+

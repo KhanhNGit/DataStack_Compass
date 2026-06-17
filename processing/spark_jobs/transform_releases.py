@@ -250,6 +250,7 @@ def transform_releases(
     spark: SparkSession,
     tool_name: str,
     run_date: Optional[str] = None,
+    reprocess: bool = False,
 ) -> Dict[str, int]:
     """Transform raw releases từ Bronze → structured Silver.
 
@@ -262,6 +263,10 @@ def transform_releases(
     run_date : str | None
         Ngày chạy (YYYY-MM-DD). Dùng để filter bronze records.
         Default: today.
+    reprocess : bool
+        If True, reprocess ALL bronze records (including already-processed).
+        Useful for schema changes or enrichment upgrades.
+        Default: False.
 
     Returns
     -------
@@ -278,11 +283,13 @@ def transform_releases(
         "═══ Transform Releases: %s ═══\n"
         "  Bronze : %s\n"
         "  Silver : %s\n"
-        "  Date   : %s",
+        "  Date   : %s\n"
+        "  Reprocess: %s",
         tool_name,
         bronze_uri,
         silver_uri,
         run_date or "all",
+        reprocess,
     )
 
     # ─── Step 1: Read Bronze ─────────────────────────────────────────────
@@ -292,8 +299,10 @@ def transform_releases(
         bronze_df = (
             spark.read.format("delta").load(bronze_uri)
             .filter(F.col("tool_name") == tool_name)
-            .filter(~F.col("processed"))
         )
+        # B-10: Skip processed filter when reprocessing
+        if not reprocess:
+            bronze_df = bronze_df.filter(~F.col("processed"))
     except Exception as exc:
         logger.error("Failed to read bronze table at %s: %s", bronze_uri, exc)
         raise
@@ -382,7 +391,8 @@ def transform_releases(
     # Deduplicate theo raw version
     all_releases_df = all_releases_df.dropDuplicates(["tool_name", "_raw_version"])
 
-    logger.info("  Total releases after explode + dedup: %d", all_releases_df.count())
+    # B-7: Removed .count() here — was logging-only, triggered expensive Spark job
+    logger.info("  Explode + dedup complete")
 
     # ─── Step 3: Chuẩn hóa semantic versioning ───────────────────────────
     logger.info("Step 3/6 — Normalizing semantic versions")
@@ -509,6 +519,8 @@ def transform_releases(
     # ─── Step 6: Delta MERGE upsert ─────────────────────────────────────
     logger.info("Step 6/6 — Upserting into silver_releases at %s", silver_uri)
 
+    # B-7: Cache silver_df before MERGE to avoid re-computation
+    silver_df.cache()
     upserted = silver_df.count()
 
     if DeltaTable.isDeltaTable(spark, silver_uri):
@@ -625,6 +637,13 @@ Examples:
         default=None,
         help="Ngày crawl cần xử lý (YYYY-MM-DD). Default: tất cả ngày.",
     )
+    parser.add_argument(
+        "--reprocess",
+        action="store_true",
+        default=False,
+        help="Reprocess ALL bronze records, including already-processed ones. "
+             "Useful after schema changes or enrichment upgrades.",
+    )
 
     return parser.parse_args(argv)
 
@@ -657,6 +676,7 @@ def main(argv: Optional[List[str]] = None) -> Dict[str, int]:
             spark=spark,
             tool_name=args.tool_name,
             run_date=args.date,
+            reprocess=args.reprocess,
         )
         return stats
     finally:

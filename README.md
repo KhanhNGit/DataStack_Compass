@@ -66,6 +66,16 @@ Step-by-step từ zero:
    ```bash
    python storage/scripts/init_starrocks.py
    ```
+   
+   Verify schema auto-detection (requires Delta tables to exist first):
+   ```sql
+   -- Connect to StarRocks on port 9030
+   DESCRIBE minio_delta_catalog.silver.silver_releases;
+   -- Expected: tool_name, version, release_date, issues, breaking_changes,
+   --           breaking_changes_enriched, deprecated_apis, processed_at
+   DESCRIBE minio_delta_catalog.silver.silver_cves;
+   DESCRIBE minio_delta_catalog.gold.gold_tool_summary;
+   ```
 
 7. Start API
    ```bash

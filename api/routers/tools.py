@@ -347,27 +347,28 @@ async def list_versions(
             r.breaking_changes_enriched,
             r.deprecated_apis,
             CASE
-                WHEN r.breaking_changes IS NOT NULL THEN TRUE
+                WHEN r.breaking_changes IS NOT NULL
+                     AND JSON_LENGTH(r.breaking_changes) > 0
+                THEN TRUE
                 ELSE FALSE
             END AS has_breaking_changes,
-            IFNULL(cve_agg.cve_count, 0) AS cve_count
+            (
+                SELECT COUNT(*)
+                FROM {_SILVER_CVES} c
+                WHERE c.tool_name = r.tool_name
+                  AND JSON_CONTAINS(c.affected_versions, JSON_QUOTE(r.version))
+            ) AS cve_count
         FROM {_SILVER_RELEASES} r
-        LEFT JOIN (
-            SELECT
-                tool_name,
-                COUNT(*) AS cve_count
-            FROM {_SILVER_CVES}
-            WHERE tool_name = %s
-            GROUP BY tool_name
-        ) cve_agg
-            ON r.tool_name = cve_agg.tool_name
         WHERE r.tool_name = %s
-        ORDER BY r.version DESC
+        ORDER BY r.release_date DESC
         LIMIT %s OFFSET %s
     """
+    # Note: cve_count uses JSON_CONTAINS for exact version matching.
+    # CVEs with range specs like "<= 3.5.0" require Python post-processing
+    # and may result in conservative (lower) counts here.
 
     with db.cursor() as cursor:
-        cursor.execute(sql, (tool_name, tool_name, page_size, offset))
+        cursor.execute(sql, (tool_name, page_size, offset))
         rows = cursor.fetchall()
 
     return PaginatedResponse.create(
@@ -414,12 +415,16 @@ async def get_version_detail(
         )
 
     # ── CVEs affecting this version ──────────────────────────────────────
+    # A-1: Hard cap at 200 rows to avoid full table scan for tools with many CVEs.
+    # Long-term fix: use StarRocks JSON_CONTAINS for SQL-level version filtering
+    # once affected_versions schema is standardized across all tools.
     cve_sql = f"""
         SELECT cve_id, tool_name, affected_versions, fixed_in_version,
                cvss_score, severity, description, published_at
         FROM {_SILVER_CVES}
         WHERE tool_name = %s
         ORDER BY cvss_score DESC
+        LIMIT 200
     """
 
     with db.cursor() as cursor:

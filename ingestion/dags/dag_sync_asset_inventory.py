@@ -135,7 +135,7 @@ def sync_asset_inventory():
             user=_STARROCKS_USER,
             password=_STARROCKS_PASSWORD,
             connect_timeout=10,
-            autocommit=True
+            autocommit=True  # for validation queries
         )
         
         with conn.cursor() as cursor:
@@ -184,26 +184,40 @@ def sync_asset_inventory():
                 conn.close()
                 return {"total_in_seed": len(assets), "valid_assets_synced": 0}
 
-            # Upsert cho bảng Primary Key
-            insert_sql = """
-                INSERT INTO compass_internal.asset_inventory
-                (tool_name, project_name, environment, department, team_name, version_in_use, owner_email, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
-            """
-            cursor.executemany(insert_sql, valid_assets)
-            logger.info("Successfully UPSERTed valid assets.")
-            
-            # Delete orphans
-            key_strings = [f"{t}|||{p}|||{e}" for t, p, e in asset_keys]
-            format_strings = ','.join(['%s'] * len(key_strings))
-            
-            delete_sql = f"""
-                DELETE FROM compass_internal.asset_inventory
-                WHERE CONCAT(tool_name, '|||', project_name, '|||', environment) NOT IN ({format_strings})
-            """
-            cursor.execute(delete_sql, tuple(key_strings))
-            deleted_rows = cursor.rowcount
-            logger.info(f"Deleted {deleted_rows} orphaned rows from asset_inventory.")
+            # A-3: Wrap UPSERT + orphan DELETE in explicit transaction
+            # so a crash between them cannot leave data inconsistent.
+            conn.autocommit = False
+            try:
+                # Upsert cho bảng Primary Key (INSERT = upsert in StarRocks PK table)
+                insert_sql = """
+                    INSERT INTO compass_internal.asset_inventory
+                    (tool_name, project_name, environment, department, team_name, version_in_use, owner_email, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                """
+                cursor.executemany(insert_sql, valid_assets)
+
+                # Delete orphans
+                key_strings = [f"{t}|||{p}|||{e}" for t, p, e in asset_keys]
+                format_strings = ','.join(['%s'] * len(key_strings))
+
+                delete_sql = f"""
+                    DELETE FROM compass_internal.asset_inventory
+                    WHERE CONCAT(tool_name, '|||', project_name, '|||', environment) NOT IN ({format_strings})
+                """
+                cursor.execute(delete_sql, tuple(key_strings))
+                deleted_rows = cursor.rowcount
+
+                conn.commit()
+                logger.info(
+                    f"Asset sync committed: {len(valid_assets)} upserted, "
+                    f"{deleted_rows} orphans removed"
+                )
+            except Exception as e:
+                conn.rollback()
+                logger.error(f"Asset sync transaction failed, rolled back: {e}")
+                raise  # re-raise so Airflow marks task FAILED
+            finally:
+                conn.autocommit = True
                 
         conn.close()
         

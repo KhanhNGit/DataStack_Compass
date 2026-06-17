@@ -96,6 +96,7 @@ def _eol_database_path() -> str:
 # =============================================================================
 
 from processing.spark_utils.semver import parse_semver as _canonical_parse_semver
+from processing.spark_utils.semver import compare_semver as _canonical_compare_semver
 
 
 def parse_semver_tuple(version: Optional[str]) -> Tuple[int, ...]:
@@ -125,8 +126,9 @@ def semver_sort_key(version: Optional[str]) -> str:
     return ".".join(f"{p:05d}" for p in parts)
 
 
-# Register UDF
+# Register UDFs
 _udf_semver_sort_key = F.udf(semver_sort_key, StringType())
+_udf_compare_semver = F.udf(_canonical_compare_semver, IntegerType())
 
 
 # =============================================================================
@@ -277,12 +279,31 @@ def build_gold_tool_summary(spark: SparkSession) -> Dict[str, int]:
 
     logger.info("  Computed latest versions for %d tools", latest_versions_df.count())
 
-    # ─── Step 3: Count CVEs by severity ──────────────────────────────────
-    logger.info("Step 3/5 — Counting CVEs by severity")
+    # ─── Step 3: Count ACTIVE CVEs by severity ─────────────────────────────
+    # B-1 fix: Only count CVEs that are still active for the tool's latest version.
+    # A CVE is active if:
+    #   - fixed_in_version is null (not yet fixed), OR
+    #   - fixed_in_version > latest_version (fix not yet reached)
+    # This prevents permanently inflated risk scores from long-fixed vulnerabilities.
+    logger.info("Step 3/5 — Counting active CVEs by severity")
 
     if cve_count > 0:
+        # Join CVEs with latest_version per tool
+        cves_with_latest = (
+            cves_df
+            .join(latest_versions_df, on="tool_name", how="left")
+        )
+
+        # Filter to active CVEs only
+        active_cves_df = cves_with_latest.filter(
+            F.col("fixed_in_version").isNull() |
+            (F.col("fixed_in_version") == "") |
+            # fixed_in_version > latest_version means fix hasn't been reached
+            (_udf_compare_semver(F.col("fixed_in_version"), F.col("latest_version")) > 0)
+        )
+
         cve_counts_df = (
-            cves_df.groupBy("tool_name")
+            active_cves_df.groupBy("tool_name")
             .agg(
                 F.count(
                     F.when(F.col("severity") == "Critical", 1)
