@@ -72,10 +72,10 @@ def test_spark_delta_write_read(spark_session):
     df = spark_session.createDataFrame(data, columns)
     
     # Ghi Delta
-    df.write.format("delta").mode("overwrite").save(test_path)
+    df.write.format("iceberg").mode("overwrite").save(test_path)
     
     # Đọc lại Delta
-    read_df = spark_session.read.format("delta").load(test_path)
+    read_df = spark_session.read.format("iceberg").load(test_path)
     
     # Verify số lượng rows
     assert read_df.count() == 5

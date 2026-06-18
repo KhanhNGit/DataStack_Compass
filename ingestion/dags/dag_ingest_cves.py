@@ -426,7 +426,6 @@ def ingest_cves():
         dict
             ``{tool_name, upserted, skipped, status}``.
         """
-        from delta.tables import DeltaTable
         from pyspark.sql import Row
 
         from processing.spark_utils.session import get_spark_session
@@ -467,20 +466,23 @@ def ingest_cves():
 
             updates_df = spark.createDataFrame(rows, schema)
 
-            # Delta MERGE — upsert theo cve_id
-            if DeltaTable.isDeltaTable(spark, table_path):
-                delta_table = DeltaTable.forPath(spark, table_path)
+            # Iceberg MERGE — upsert theo cve_id
+            table_exists = False
+            try:
+                spark.read.format("iceberg").load(table_path)
+                table_exists = True
+            except Exception:
+                pass
 
-                merge_result = (
-                    delta_table.alias("target")
-                    .merge(
-                        updates_df.alias("source"),
-                        "target.cve_id = source.cve_id"
-                    )
-                    .whenMatchedUpdateAll()
-                    .whenNotMatchedInsertAll()
-                    .execute()
-                )
+            if table_exists:
+                updates_df.createOrReplaceTempView("source_cves")
+                spark.sql(f"""
+                    MERGE INTO local.{bucket}.silver_cves target
+                    USING source_cves source
+                    ON target.cve_id = source.cve_id
+                    WHEN MATCHED THEN UPDATE SET *
+                    WHEN NOT MATCHED THEN INSERT *
+                """)
 
                 logger.info(
                     "✓ Merged %d CVEs into silver_cves for %s",
@@ -489,7 +491,7 @@ def ingest_cves():
                 )
             else:
                 # Bảng chưa tồn tại → tạo mới
-                updates_df.write.format("delta").mode("overwrite").save(table_path)
+                updates_df.write.format("iceberg").mode("overwrite").save(table_path)
                 logger.info(
                     "✓ Created silver_cves with %d records for %s",
                     len(cves),

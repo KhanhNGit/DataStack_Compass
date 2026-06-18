@@ -240,11 +240,12 @@ class BaseConnector(abc.ABC):
             source_url=data.get("html_url") or data.get("source_url") or "",
             crawled_at=datetime.now(timezone.utc),
             source_type=source_type,
+            processed=False,
         )
 
         df = spark.createDataFrame([row], schema)
 
-        df.write.format("delta").mode("append").save(table_path)
+        df.write.format("iceberg").mode("append").save(table_path)
 
         logger.info(
             "Saved to bronze: tool=%s version=%s path=%s",

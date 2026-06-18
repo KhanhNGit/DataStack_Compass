@@ -75,7 +75,7 @@ class _ExpectationRunner:
 
     def load(self) -> None:
         self._df = (
-            self.spark.read.format("delta").load(self.table_path)
+            self.spark.read.format("iceberg").load(self.table_path)
             .filter(F.col("tool_name") == self.tool_name)
         )
 

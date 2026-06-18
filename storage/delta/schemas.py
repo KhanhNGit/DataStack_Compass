@@ -233,7 +233,7 @@ def create_delta_tables(spark: SparkSession) -> Dict[str, str]:
             empty_df = spark.createDataFrame([], schema)
             (
                 empty_df.write
-                .format("delta")
+                .format("iceberg")
                 .mode("ignore")          # skip nếu đã tồn tại
                 .option("mergeSchema", "true")
                 .save(path)

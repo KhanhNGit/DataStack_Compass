@@ -3,7 +3,7 @@
 # DataStack Compass — Infrastructure Health Check
 # Usage: bash health_check.sh
 ###############################################################################
-set -euo pipefail
+set -e
 
 # ── Colors ───────────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
@@ -17,6 +17,11 @@ FAIL="${RED}${BOLD}FAIL${RESET}"
 
 total=0
 passed=0
+
+DOCKER_CMD="docker"
+if command -v docker.exe >/dev/null 2>&1; then
+  DOCKER_CMD="docker.exe"
+fi
 
 # ── Helper ───────────────────────────────────────────────────────────────────
 check() {
@@ -51,10 +56,10 @@ check "MinIO (Console)" \
 echo ""
 echo -e "${BOLD}▸ OLAP Layer${RESET}"
 check "StarRocks (MySQL)" \
-  mysql -h 127.0.0.1 -P 9030 -u root --skip-column-names -e "SELECT 1"
+  $DOCKER_CMD exec datastack-starrocks mysql -h 127.0.0.1 -P 9030 -u root --skip-column-names -e "SELECT 1"
 
 check "StarRocks (FE HTTP)" \
-  curl -sf --max-time 5 -o /dev/null http://localhost:8030
+  curl -sf --max-time 5 -o /dev/null http://localhost:8030/api/health
 
 # ── 3. Airflow ──────────────────────────────────────────────────────────────
 echo ""
@@ -63,7 +68,7 @@ check "Airflow Webserver" \
   curl -sf --max-time 5 http://localhost:8080/health
 
 check "Postgres (Airflow DB)" \
-  docker exec datastack-postgres pg_isready -U airflow -q
+  $DOCKER_CMD exec datastack-postgres pg_isready -U airflow -q
 
 # ── 4. Application Layer ────────────────────────────────────────────────────
 echo ""
@@ -84,11 +89,11 @@ else
   exit 1
 fi
 
-# ── 5. Docker Memory Usage ──────────────────────────────────────────────────
-echo ""
-echo -e "${BOLD}▸ Docker Memory Usage${RESET}"
-echo ""
-docker stats --no-stream --format "table {{.Container}}\t{{.MemUsage}}\t{{.MemPerc}}" \
-  | grep -E "datastack-|CONTAINER" || echo "  (no datastack containers running)"
+# # ── 5. Docker Memory Usage ──────────────────────────────────────────────────
+# echo ""
+# echo -e "${BOLD}▸ Docker Memory Usage${RESET}"
+# echo ""
+# $DOCKER_CMD stats --no-stream --format "table {{.Container}}\t{{.MemUsage}}\t{{.MemPerc}}" \
+#   | grep -E "datastack-|CONTAINER" || echo "  (no datastack containers running)"
 
-echo ""
+# echo ""

@@ -76,10 +76,9 @@ export default function AnalysisWorkspace() {
             className={`
               flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium
               transition-all duration-150
-              ${
-                activeTab === tab.id
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              ${activeTab === tab.id
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }
             `}
           >
@@ -198,7 +197,7 @@ function VersionDiffPanel() {
             {versions.map(v => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
-        <button 
+        <button
           onClick={handleCompare}
           disabled={loading || fromVer === toVer || !isVersionNewer(fromVer, toVer)}
           className="h-9 px-5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50"
@@ -225,7 +224,7 @@ function VersionDiffPanel() {
                   New Breaking Changes
                 </h3>
               </div>
-              
+
               {/* Category Filter */}
               {result.breakingChanges.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-4 pb-4 border-b border-slate-100">
@@ -233,11 +232,10 @@ function VersionDiffPanel() {
                     <button
                       key={cat}
                       onClick={() => toggleCategory(cat)}
-                      className={`text-xs px-2 py-1 rounded-md transition-colors ${
-                        bcCategories.includes(cat) 
-                          ? 'bg-indigo-100 text-indigo-700 font-medium border border-indigo-200' 
+                      className={`text-xs px-2 py-1 rounded-md transition-colors ${bcCategories.includes(cat)
+                          ? 'bg-indigo-100 text-indigo-700 font-medium border border-indigo-200'
                           : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
-                      }`}
+                        }`}
                     >
                       {cat}
                     </button>
@@ -255,7 +253,7 @@ function VersionDiffPanel() {
                   .map((bc, i) => (
                     <li key={i} className="text-sm text-slate-600 flex flex-col gap-1.5 p-2 rounded hover:bg-slate-50">
                       <div className="flex items-start gap-2">
-                        <span className="text-rose-500 mt-0.5">•</span> 
+                        <span className="text-rose-500 mt-0.5">•</span>
                         <span>{bc.text}</span>
                       </div>
                       <div className="flex gap-2 ml-4">
@@ -263,14 +261,14 @@ function VersionDiffPanel() {
                         <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-indigo-50 text-indigo-700 border border-indigo-100">{bc.category}</span>
                       </div>
                     </li>
-                ))}
+                  ))}
                 {result.breakingChanges.length === 0 && (
                   <div className="text-slate-500 italic font-sans text-sm">No breaking changes detected.</div>
                 )}
-                {result.breakingChanges.length > 0 && 
-                 result.breakingChanges.filter(bc => bcCategories.length === 0 || bcCategories.includes(bc.category)).length === 0 && (
-                  <div className="text-slate-500 italic font-sans text-sm">No breaking changes match selected categories.</div>
-                )}
+                {result.breakingChanges.length > 0 &&
+                  result.breakingChanges.filter(bc => bcCategories.length === 0 || bcCategories.includes(bc.category)).length === 0 && (
+                    <div className="text-slate-500 italic font-sans text-sm">No breaking changes match selected categories.</div>
+                  )}
               </ul>
             </div>
 
@@ -376,7 +374,7 @@ function StackComparePanel() {
   const removeTool = (t: string) => {
     setSelectedTools(prev => prev.filter(tool => tool !== t));
   };
-  
+
   const compareMutation = useMutation({
     mutationFn: async () => {
       const res = await axios.get('/api/v1/analysis/stack-comparator', {
@@ -484,7 +482,7 @@ function StackComparePanel() {
           )}
         </div>
         <div>
-          <button 
+          <button
             onClick={handleCompare}
             disabled={loading || selectedTools.length === 0}
             className="h-9 px-5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50"
@@ -576,7 +574,7 @@ function UpgradePathPanel() {
   const versions = sortVersions(TOOL_VERSIONS[tool] || [], false); // Ascending
   const [currentVersion, setCurrentVersion] = useState(versions[0] || '');
   const [targetVersion, setTargetVersion] = useState(versions[versions.length - 1] || '');
-  
+
   const [loading, setLoading] = useState(false);
   const [steps, setSteps] = useState<any[] | null>(null);
 
@@ -597,11 +595,11 @@ function UpgradePathPanel() {
       const startIndex = versions.indexOf(currentVersion);
       const endIndex = versions.indexOf(targetVersion);
       const generatedSteps = [];
-      
+
       for (let i = startIndex; i < endIndex; i++) {
         generatedSteps.push({
           fromVer: versions[i],
-          toVer: versions[i+1],
+          toVer: versions[i + 1],
           breakingChanges: i === startIndex ? [
             { text: `KIP-792: Changed default value of log.retention.bytes`, category: 'CONFIG_CHANGE', impact: 'Low', action_required: false },
             { text: `KIP-811: Deprecated GroupMetadata`, category: 'API_CHANGE', impact: 'Medium', action_required: true }
@@ -635,8 +633,8 @@ function UpgradePathPanel() {
       <div className="flex flex-wrap items-end gap-4">
         <div>
           <label className="block text-xs font-medium text-slate-600 mb-1">Tool</label>
-          <select 
-            value={tool} 
+          <select
+            value={tool}
             onChange={e => setTool(e.target.value)}
             className="h-9 px-3 rounded-lg border border-slate-200 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500/20"
           >
@@ -645,8 +643,8 @@ function UpgradePathPanel() {
         </div>
         <div>
           <label className="block text-xs font-medium text-slate-600 mb-1">Current Version</label>
-          <select 
-            value={currentVersion} 
+          <select
+            value={currentVersion}
             onChange={e => setCurrentVersion(e.target.value)}
             className="h-9 px-3 rounded-lg border border-slate-200 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500/20 w-32"
           >
@@ -656,15 +654,15 @@ function UpgradePathPanel() {
         <ArrowRight size={20} className="text-slate-400 mb-1" />
         <div>
           <label className="block text-xs font-medium text-slate-600 mb-1">Target Version</label>
-          <select 
-            value={targetVersion} 
+          <select
+            value={targetVersion}
             onChange={e => setTargetVersion(e.target.value)}
             className="h-9 px-3 rounded-lg border border-slate-200 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500/20 w-32"
           >
             {targetVersions.map(v => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
-        <button 
+        <button
           onClick={handlePlanUpgrade}
           disabled={!targetVersion || currentVersion === targetVersion}
           className="h-9 px-5 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -695,7 +693,7 @@ function UpgradePathPanel() {
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-bold text-slate-800 text-base">{step.fromVer} → {step.toVer}</h3>
                   </div>
-                  
+
                   <div className="space-y-3 text-sm">
                     {step.breakingChanges.length > 0 && (
                       <div>
@@ -707,7 +705,7 @@ function UpgradePathPanel() {
                           {step.breakingChanges.map((bc: BreakingChange, i: number) => (
                             <li key={i} className="flex flex-col gap-1 bg-slate-50 p-1.5 rounded">
                               <div className="flex items-start gap-1.5">
-                                <span className="text-rose-400 mt-0.5">•</span> 
+                                <span className="text-rose-400 mt-0.5">•</span>
                                 <span>{bc.text}</span>
                               </div>
                               <div className="flex gap-1.5 ml-3">
@@ -719,7 +717,7 @@ function UpgradePathPanel() {
                         </ul>
                       </div>
                     )}
-                    
+
                     <div className="flex items-center gap-4 border-t border-slate-100 pt-3">
                       <div className="flex items-center gap-1.5 text-emerald-600 font-medium text-xs">
                         <Lock size={14} />
@@ -765,7 +763,7 @@ function UpgradePathPanel() {
               customFormatter={(data) => {
                 let md = `# Migration Checklist: ${tool}\n\n`;
                 md += `**Upgrade Path:** ${currentVersion} -> ${targetVersion}\n\n`;
-                
+
                 data.forEach((step, idx) => {
                   md += `## Step ${idx + 1}: ${step.fromVer} to ${step.toVer}\n`;
                   md += `### ⚠ Breaking Changes\n`;
@@ -846,10 +844,10 @@ function EolAssessmentPanel() {
               margin={{ top: 20, right: 30, left: 40, bottom: 5 }}
             >
               <XAxis type="number" label={{ value: 'Days Remaining', position: 'insideBottom', offset: -5 }} />
-              <YAxis dataKey="tool_name" type="category" width={100} tick={{fontSize: 12}} />
-              <Tooltip cursor={{fill: '#f8fafc'}} content={<CustomTooltip />} />
+              <YAxis dataKey="tool_name" type="category" width={100} tick={{ fontSize: 12 }} />
+              <Tooltip cursor={{ fill: '#f8fafc' }} content={<CustomTooltip />} />
               <Bar dataKey="days_remaining" radius={[0, 4, 4, 0]} maxBarSize={40}>
-                {data.map((entry, index) => (
+                {data.map((entry: any, index: number) => (
                   <Cell key={`cell-${index}`} fill={getBarColor(entry.days_remaining)} />
                 ))}
               </Bar>
@@ -865,19 +863,19 @@ const handleExportFormatter = (dataList: any[]) => {
   const rows = [
     ['Tool', 'Current Version', 'EOL Date', 'Days Remaining', 'Recommended Action']
   ];
-  
+
   dataList.forEach(item => {
-    const action = item.days_remaining < 30 ? 'Immediate Upgrade Required' : 
-                   item.days_remaining < 90 ? 'Plan Upgrade Soon' : 'Monitor';
+    const action = item.days_remaining < 30 ? 'Immediate Upgrade Required' :
+      item.days_remaining < 90 ? 'Plan Upgrade Soon' : 'Monitor';
     rows.push([
-      item.tool_name, 
-      item.version_in_use, 
-      item.eol_date ? new Date(item.eol_date).toISOString().split('T')[0] : 'N/A', 
-      item.days_remaining?.toString() || '0', 
+      item.tool_name,
+      item.version_in_use,
+      item.eol_date ? new Date(item.eol_date).toISOString().split('T')[0] : 'N/A',
+      item.days_remaining?.toString() || '0',
       action
     ]);
   });
-  
+
   return rows.map(e => e.join(",")).join("\n");
 };
 
@@ -890,7 +888,7 @@ const CustomTooltip = ({ active, payload }: any) => {
         <p className="text-slate-300">Version: <span className="text-white font-medium">{p.version_in_use}</span></p>
         <p className="text-slate-300">EOL Date: <span className="text-white font-medium">{p.eol_date ? new Date(p.eol_date).toLocaleDateString() : 'N/A'}</span></p>
         <p className="text-slate-300">Days Left: <span className="text-white font-medium">{p.days_remaining}</span></p>
-        
+
         <div className="mt-3 pt-3 border-t border-slate-700 flex flex-col gap-2">
           <a href={`/catalog/${p.tool_name}`} className="text-indigo-400 hover:text-indigo-300 text-xs font-medium flex items-center gap-1">
             Check Latest Versions <ArrowRight size={12} />

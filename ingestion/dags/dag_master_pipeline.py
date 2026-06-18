@@ -74,7 +74,7 @@ def _generate_daily_report():
             # Truy vấn số lượng release mới
             cursor.execute("""
                 SELECT COUNT(*) as new_releases 
-                FROM minio_delta_catalog.silver.silver_releases 
+                FROM minio_iceberg_catalog.silver.silver_releases 
                 WHERE published_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)
             """)
             releases = cursor.fetchone().get('new_releases', 0)
@@ -82,7 +82,7 @@ def _generate_daily_report():
             # Truy vấn CVE mới
             cursor.execute("""
                 SELECT severity, COUNT(*) as cnt 
-                FROM minio_delta_catalog.silver.silver_cves 
+                FROM minio_iceberg_catalog.silver.silver_cves 
                 WHERE published_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)
                 GROUP BY severity
             """)
@@ -109,14 +109,16 @@ def _generate_daily_report():
         logger.error(f"Failed to generate daily report: {e}")
 
 def _cleanup_bronze_old_data():
-    """Chạy Spark VACUUM xoá dữ liệu cũ hơn 90 ngày."""
+    """Chạy Spark expire_snapshots xoá dữ liệu cũ hơn 90 ngày."""
     from pyspark.sql import SparkSession
     
-    logger.info("Starting Delta Lake Vacuum...")
+    logger.info("Starting Iceberg Expire Snapshots...")
     builder = (SparkSession.builder
-        .appName("VacuumBronze")
-        .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+        .appName("CleanupBronze")
+        .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
+        .config("spark.sql.catalog.local", "org.apache.iceberg.spark.SparkCatalog")
+        .config("spark.sql.catalog.local.type", "hadoop")
+        .config("spark.sql.catalog.local.warehouse", "s3a://")
         .config("spark.hadoop.fs.s3a.access.key", os.environ.get("MINIO_ACCESS_KEY", ""))
         .config("spark.hadoop.fs.s3a.secret.key", os.environ.get("MINIO_SECRET_KEY", ""))
         .config("spark.hadoop.fs.s3a.endpoint", os.environ.get("MINIO_ENDPOINT", "http://127.0.0.1:9000"))
@@ -125,18 +127,17 @@ def _cleanup_bronze_old_data():
 
     try:
         spark = builder.getOrCreate()
-        spark.conf.set("spark.databricks.delta.retentionDurationCheck.enabled", "false")
         
-        # 90 ngày = 2160 hours
-        spark.sql("VACUUM delta.`s3a://bronze/raw_releases/` RETAIN 2160 HOURS")
+        timestamp_90_days_ago = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d %H:%M:%S')
+        spark.sql(f"CALL local.system.expire_snapshots('bronze.bronze_raw_releases', TIMESTAMP '{timestamp_90_days_ago}')")
         
         # Mở rộng thêm cho cves nếu có
         try:
-            spark.sql("VACUUM delta.`s3a://bronze/raw_cves/` RETAIN 2160 HOURS")
+            spark.sql(f"CALL local.system.expire_snapshots('bronze.raw_cves', TIMESTAMP '{timestamp_90_days_ago}')")
         except Exception as e:
-            logger.info(f"raw_cves vacuum ignored (might not exist yet): {e}")
+            logger.info(f"raw_cves expire_snapshots ignored (might not exist yet): {e}")
             
-        logger.info("Vacuum completed successfully.")
+        logger.info("Expire snapshots completed successfully.")
         spark.stop()
     except Exception as e:
         logger.error(f"Vacuum failed: {e}")
@@ -182,9 +183,11 @@ with DAG(
     spark_submit_cmd = f"""
         spark-submit \\
         --master "local[*]" \\
-        --packages io.delta:delta-core_2.12:2.4.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262 \\
-        --conf "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" \\
-        --conf "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" \\
+        --packages org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262 \\
+        --conf "spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions" \\
+        --conf "spark.sql.catalog.local=org.apache.iceberg.spark.SparkCatalog" \\
+        --conf "spark.sql.catalog.local.type=hadoop" \\
+        --conf "spark.sql.catalog.local.warehouse=s3a://" \\
         --conf "spark.hadoop.fs.s3a.access.key=${{MINIO_ACCESS_KEY}}" \\
         --conf "spark.hadoop.fs.s3a.secret.key=${{MINIO_SECRET_KEY}}" \\
         --conf "spark.hadoop.fs.s3a.endpoint=${{MINIO_ENDPOINT:-http://127.0.0.1:9000}}" \\
@@ -204,7 +207,7 @@ with DAG(
         task_id="refresh_starrocks_stats",
         bash_command="""
             mysql -h ${STARROCKS_HOST:-127.0.0.1} -P ${STARROCKS_PORT:-9030} -u ${STARROCKS_USER:-root} \\
-            -e "ANALYZE TABLE minio_delta_catalog.silver.silver_releases;"
+            -e "ANALYZE TABLE minio_iceberg_catalog.silver.silver_releases;"
         """
     )
     

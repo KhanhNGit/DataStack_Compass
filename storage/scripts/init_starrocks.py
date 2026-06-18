@@ -19,6 +19,9 @@ _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
+from dotenv import load_dotenv
+load_dotenv(os.path.join(_PROJECT_ROOT, ".env"))
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
@@ -101,13 +104,14 @@ def main():
 
         # 5. Verify kết quả
         logger.info("Verifying catalogs and databases...")
-        
+        # 3. Verify
         cursor.execute("SHOW CATALOGS")
         catalogs = [row[0] for row in cursor.fetchall()]
-        if "minio_delta_catalog" in catalogs:
-            logger.info("PASS: Catalog 'minio_delta_catalog' exists")
+        
+        if "minio_iceberg_catalog" in catalogs:
+            logger.info("PASS: Catalog 'minio_iceberg_catalog' exists")
         else:
-            logger.error("FAIL: Catalog 'minio_delta_catalog' not found")
+            logger.error("FAIL: Catalog 'minio_iceberg_catalog' not found")
             sys.exit(1)
 
         cursor.execute("SHOW DATABASES")

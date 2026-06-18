@@ -1,12 +1,14 @@
--- 1. Tạo External Catalog trỏ vào MinIO (Delta Lake format)
--- Schema auto-detection: "type"="deltalake" tells StarRocks to read column schemas
--- directly from Delta Lake / Parquet metadata. No explicit column DDL is needed for
+-- 1. Tạo External Catalog trỏ vào MinIO (Iceberg format)
+-- Schema auto-detection: "type"="iceberg" tells StarRocks to read column schemas
+-- directly from Iceberg / Parquet metadata. No explicit column DDL is needed for
 -- external tables (silver_releases, silver_cves, gold_tool_summary, etc.).
 -- Columns like issues, breaking_changes_enriched, deprecated_apis are detected
 -- automatically from the Parquet files written by PySpark.
-CREATE EXTERNAL CATALOG IF NOT EXISTS minio_delta_catalog
+CREATE EXTERNAL CATALOG IF NOT EXISTS minio_iceberg_catalog
 PROPERTIES (
-    "type" = "deltalake",
+    "type" = "iceberg",
+    "iceberg.catalog.type" = "hadoop",
+    "iceberg.catalog.warehouse" = "s3a://",
     "aws.s3.use_instance_profile" = "false",
     "aws.s3.access_key" = "${MINIO_ACCESS_KEY}",
     "aws.s3.secret_key" = "${MINIO_SECRET_KEY}",
@@ -15,14 +17,14 @@ PROPERTIES (
 );
 
 -- After running this script, verify schema auto-detection with:
--- DESCRIBE minio_delta_catalog.silver.silver_releases;
+-- DESCRIBE minio_iceberg_catalog.silver.silver_releases
 -- Expected columns: tool_name, version, release_date, issues, breaking_changes,
 --                   breaking_changes_enriched, deprecated_apis, processed_at
--- If columns are missing, check that Delta Lake tables were written with the
+-- If columns are missing, check that Iceberg tables were written with the
 -- correct schema from storage/delta/schemas.py before this script was run.
 --
--- DESCRIBE minio_delta_catalog.silver.silver_cves;
--- DESCRIBE minio_delta_catalog.gold.gold_tool_summary;
+-- DESCRIBE minio_iceberg_catalog.silver.silver_cves
+-- DESCRIBE minio_iceberg_catalog.gold.gold_tool_summary
 
 -- 2. Tạo internal database cho asset inventory và audit logs
 CREATE DATABASE IF NOT EXISTS compass_internal;

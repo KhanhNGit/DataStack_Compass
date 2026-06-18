@@ -2,7 +2,7 @@
   {
     "tool_name": "apache-kafka",
     "version_in_use": "3.5.0",
-    "owner_email": "team@company.com",
+    "owner_email": "khanhng2@viettel.com.vn",
     "department": "Data Engineering",
     "project_name": "Core Pipeline",
     "team_name": "Data Platform",
@@ -11,7 +11,7 @@
   {
     "tool_name": "apache-flink",
     "version_in_use": "1.17.1",
-    "owner_email": "stream@company.com",
+    "owner_email": "khanh.ng080402@gmail.com",
     "department": "Data Engineering",
     "project_name": "Realtime Analytics",
     "team_name": "Streaming Apps",
@@ -20,7 +20,7 @@
   {
     "tool_name": "apache-spark",
     "version_in_use": "3.4.1",
-    "owner_email": "analytics@company.com",
+    "owner_email": "khanhng2@viettel.com.vn",
     "department": "Data Science",
     "project_name": "ML Training",
     "team_name": "Data Analytics",
@@ -29,7 +29,7 @@
   {
     "tool_name": "delta-io",
     "version_in_use": "2.4.0",
-    "owner_email": "lakehouse@company.com",
+    "owner_email": "khanh.ng080402@gmail.com",
     "department": "IT Infrastructure",
     "project_name": "Enterprise Data Lake",
     "team_name": "Data Lakehouse",
@@ -38,7 +38,7 @@
   {
     "tool_name": "starrocks",
     "version_in_use": "3.2.0",
-    "owner_email": "olap@company.com",
+    "owner_email": "khanhvippro08041988@gmail.com",
     "department": "BI Analytics",
     "project_name": "Reporting Dashboard",
     "team_name": "BI & Analytics",

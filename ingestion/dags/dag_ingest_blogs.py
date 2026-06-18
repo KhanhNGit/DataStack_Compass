@@ -88,20 +88,29 @@ def dag_ingest_blogs():
         
         # Upsert by URL
         try:
-            from delta.tables import DeltaTable
-            if DeltaTable.isDeltaTable(spark, table_path):
-                dt = DeltaTable.forPath(spark, table_path)
-                dt.alias("t").merge(
-                    df.alias("s"),
-                    "t.url = s.url"
-                ).whenMatchedUpdateAll().whenNotMatchedInsertAll().execute()
+            table_exists = False
+            try:
+                spark.read.format("iceberg").load(table_path)
+                table_exists = True
+            except Exception:
+                pass
+
+            if table_exists:
+                df.createOrReplaceTempView("source_blogs")
+                spark.sql(f"""
+                    MERGE INTO local.{bucket}.silver_blogs t
+                    USING source_blogs s
+                    ON t.url = s.url
+                    WHEN MATCHED THEN UPDATE SET *
+                    WHEN NOT MATCHED THEN INSERT *
+                """)
                 logger.info(f"Merged {df.count()} blog posts into silver_blogs")
             else:
-                df.write.format("delta").mode("overwrite").save(table_path)
+                df.write.format("iceberg").mode("overwrite").save(table_path)
                 logger.info(f"Created silver_blogs table with {df.count()} rows")
         except Exception as e:
             logger.warning(f"Merge failed, trying overwrite/append: {e}")
-            df.write.format("delta").mode("append").save(table_path)
+            df.write.format("iceberg").mode("append").save(table_path)
             
         spark.stop()
         return tools

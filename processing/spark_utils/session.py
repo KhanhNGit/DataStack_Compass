@@ -2,7 +2,7 @@
 DataStack Compass — Spark Session Factory
 ==========================================
 
-Tạo SparkSession đã cấu hình sẵn kết nối MinIO (S3A) và Delta Lake.
+Tạo SparkSession đã cấu hình sẵn kết nối MinIO (S3A) và Apache Iceberg.
 Mọi config đọc từ environment variables → portable giữa local và production.
 
 Usage
@@ -10,7 +10,7 @@ Usage
     from processing.spark_utils.session import get_spark_session
 
     spark = get_spark_session("my-etl-job")
-    df = spark.read.format("delta").load("s3a://bronze/release_notes")
+    df = spark.read.format("iceberg").load("s3a://bronze/release_notes")
 """
 
 from __future__ import annotations
@@ -39,7 +39,7 @@ def _env(key: str, default: Optional[str] = None) -> str:
 
 
 def get_spark_session(app_name: str) -> SparkSession:
-    """Tạo (hoặc lấy lại) SparkSession đã cấu hình MinIO + Delta Lake.
+    """Tạo (hoặc lấy lại) SparkSession đã cấu hình MinIO + Apache Iceberg.
 
     Parameters
     ----------
@@ -49,7 +49,7 @@ def get_spark_session(app_name: str) -> SparkSession:
     Returns
     -------
     SparkSession
-        Session đã sẵn sàng đọc/ghi s3a:// paths với Delta Lake format.
+        Session đã sẵn sàng đọc/ghi s3a:// paths với Iceberg format.
 
     Notes
     -----
@@ -86,18 +86,27 @@ def get_spark_session(app_name: str) -> SparkSession:
         )
         # Tắt SSL cho local MinIO; production có thể override qua env
         .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
-        # ── Delta Lake ───────────────────────────────────────────────────
+        # ── Apache Iceberg ───────────────────────────────────────────────
         .config(
             "spark.sql.extensions",
-            "io.delta.sql.DeltaSparkSessionExtension",
+            "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
         )
         .config(
-            "spark.sql.catalog.spark_catalog",
-            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
+            "spark.sql.catalog.local",
+            "org.apache.iceberg.spark.SparkCatalog",
         )
+        .config("spark.sql.catalog.local.type", "hadoop")
+        .config("spark.sql.catalog.local.warehouse", "s3a://")
         # ── Performance defaults ─────────────────────────────────────────
         .config("spark.sql.shuffle.partitions", "8")
         .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+        # ── Dependencies ─────────────────────────────────────────────────
+        .config(
+            "spark.jars.packages",
+            "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.0,"
+            "org.apache.hadoop:hadoop-aws:3.3.4,"
+            "com.amazonaws:aws-java-sdk-bundle:1.12.262"
+        )
     )
 
     spark = builder.getOrCreate()

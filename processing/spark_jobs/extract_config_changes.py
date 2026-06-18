@@ -61,7 +61,7 @@ def main():
     bronze_path = f"s3a://{bronze_bucket}/bronze_raw_releases/"
     
     try:
-        df_raw = spark.read.format("delta").load(bronze_path).filter(F.col("tool_name") == tool)
+        df_raw = spark.read.format("iceberg").load(bronze_path).filter(F.col("tool_name") == tool)
     except Exception as e:
         logger.error(f"Cannot read bronze_raw_releases: {e}")
         return
@@ -208,7 +208,7 @@ def main():
                 .execute()
             )
         else:
-            df_changes.write.format("delta").mode("overwrite").save(table_path)
+            df_changes.write.format("iceberg").mode("overwrite").save(table_path)
         logger.info(f"Successfully upserted {df_changes.count()} config changes for {tool}.")
     except Exception as e:
         logger.error(f"Merge failed for {tool}: {e}")

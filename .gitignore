@@ -16,3 +16,4 @@ logs/
 *.log
 GEMINI.md
 tree.txt
+infra/docker/data

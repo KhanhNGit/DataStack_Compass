@@ -53,7 +53,7 @@ Trigger the `process_releases` DAG with config:
 - **Rollback**: Delta Lake time-travel allows rollback if needed:
   ```python
   # Restore silver_releases to previous version
-  spark.read.format("delta").option("versionAsOf", 5).load("s3a://silver/silver_releases/")
+  spark.read.format("iceberg").option("versionAsOf", 5).load("s3a://silver/silver_releases/")
   ```
 
 ## After Reprocessing

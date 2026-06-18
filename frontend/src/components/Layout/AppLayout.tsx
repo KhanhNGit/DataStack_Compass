@@ -8,8 +8,6 @@ import {
   Shield,
   Search,
   Bell,
-  ChevronLeft,
-  ChevronRight,
   Compass,
   Menu,
   X,
@@ -95,8 +93,8 @@ export default function AppLayout() {
   useEffect(() => {
     setShowDropdown(
       debouncedQuery.length >= 1 &&
-        Array.isArray(searchResults) &&
-        searchResults.length > 0,
+      Array.isArray(searchResults) &&
+      searchResults.length > 0,
     );
   }, [debouncedQuery, searchResults]);
 
@@ -162,7 +160,7 @@ export default function AppLayout() {
     <div className="flex h-screen overflow-hidden">
       {/* ═══ Mobile Nav Overlay ═══ */}
       {mobileMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
           onClick={() => setMobileMenuOpen(false)}
         />
@@ -179,7 +177,7 @@ export default function AppLayout() {
         style={{ background: 'var(--sidebar-bg)' }}
       >
         {/* Mobile close button */}
-        <button 
+        <button
           onClick={() => setMobileMenuOpen(false)}
           className="md:hidden absolute top-4 right-[-40px] text-white p-2"
         >
@@ -210,11 +208,10 @@ export default function AppLayout() {
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
                  transition-all duration-150 group
-                 ${
-                   isActive
-                     ? 'text-white bg-white/10'
-                     : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
-                 }`
+                 ${isActive
+                  ? 'text-white bg-white/10'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                }`
               }
             >
               <Icon size={20} className="flex-shrink-0 transition-colors" />
@@ -350,9 +347,9 @@ export default function AppLayout() {
                             {item.result_type === 'cve' && (
                               <span className={`
                                 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide
-                                ${item.severity === 'Critical' ? 'bg-red-100 text-red-700' : 
-                                  item.severity === 'High' ? 'bg-orange-100 text-orange-700' : 
-                                  'bg-slate-100 text-slate-600'}
+                                ${item.severity === 'Critical' ? 'bg-red-100 text-red-700' :
+                                  item.severity === 'High' ? 'bg-orange-100 text-orange-700' :
+                                    'bg-slate-100 text-slate-600'}
                               `}>
                                 {item.severity}
                               </span>

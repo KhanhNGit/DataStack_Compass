@@ -4,19 +4,20 @@ WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
+    gcc curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy project root for editable install (handles sys.path)
-COPY pyproject.toml setup.cfg setup.py* ./
+# Copy application modules
 COPY processing/ ./processing/
 COPY storage/ ./storage/
 COPY configs/ ./configs/
 COPY api/ ./api/
 
+# Set PYTHONPATH so absolute imports work without editable install
+ENV PYTHONPATH=/app
+
 # Install Python dependencies
-RUN pip install --no-cache-dir -r api/requirements.txt \
-    && pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir -r api/requirements.txt
 
 EXPOSE 8000
 

@@ -19,7 +19,6 @@ httpx==0.27.0
 
 # --- Processing & Data Quality ---
 pyspark==3.5.1
-delta-spark==3.1.0
 great-expectations==0.18.12
 
 # --- Ingestion & Orchestration ---

@@ -237,7 +237,7 @@ def build_gold_tool_summary(spark: SparkSession) -> Dict[str, int]:
     logger.info("Step 1/5 — Reading silver tables")
 
     try:
-        releases_df = spark.read.format("delta").load(silver_rel_path)
+        releases_df = spark.read.format("iceberg").load(silver_rel_path)
         logger.info("  silver_releases: %d rows", releases_df.count())
     except Exception as exc:
         logger.error("Cannot read silver_releases at %s: %s", silver_rel_path, exc)
@@ -245,7 +245,7 @@ def build_gold_tool_summary(spark: SparkSession) -> Dict[str, int]:
 
     # silver_cves có thể chưa tồn tại nếu chưa có CVE data
     try:
-        cves_df = spark.read.format("delta").load(silver_cve_path)
+        cves_df = spark.read.format("iceberg").load(silver_cve_path)
         cve_count = cves_df.count()
         logger.info("  silver_cves: %d rows", cve_count)
     except Exception:
@@ -390,7 +390,7 @@ def build_gold_tool_summary(spark: SparkSession) -> Dict[str, int]:
         )
         logger.info("  ✓ Merged %d tools into existing gold_tool_summary", tools_processed)
     else:
-        gold_df.write.format("delta").mode("overwrite").save(gold_path)
+        gold_df.write.format("iceberg").mode("overwrite").save(gold_path)
         logger.info("  ✓ Created gold_tool_summary with %d tools", tools_processed)
 
     stats = {

@@ -1,4 +1,4 @@
-import React from 'react';
+
 import { Download } from 'lucide-react';
 import { useToast } from '../Toast/ToastProvider';
 
@@ -42,7 +42,7 @@ export default function ExportButton({
         if (format === 'csv') {
           // Headers
           content = colHeaders.map((h) => `"${h.replace(/"/g, '""')}"`).join(',') + '\n';
-          
+
           // Rows
           content += data
             .map((row) =>
@@ -58,7 +58,7 @@ export default function ExportButton({
           // Headers
           content = '| ' + colHeaders.join(' | ') + ' |\n';
           content += '| ' + colHeaders.map(() => '---').join(' | ') + ' |\n';
-          
+
           // Rows
           content += data
             .map((row) =>
@@ -77,7 +77,7 @@ export default function ExportButton({
 
       const mimeType = format === 'csv' ? 'text/csv;charset=utf-8;' : 'text/markdown;charset=utf-8;';
       const blob = new Blob(['\ufeff' + content], { type: mimeType }); // Add BOM for Excel support
-      
+
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.setAttribute('href', url);

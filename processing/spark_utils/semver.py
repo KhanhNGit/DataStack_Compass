@@ -1,7 +1,11 @@
 import re
 from typing import List, Tuple
-from pyspark.sql.functions import udf
-from pyspark.sql.types import IntegerType
+try:
+    from pyspark.sql.functions import udf
+    from pyspark.sql.types import IntegerType
+except ImportError:
+    udf = None
+    IntegerType = None
 
 SEMVER_REGEX = re.compile(
     r'^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([0-9A-Za-z-.]+))?(?:\+([0-9A-Za-z-.]+))?$'
@@ -105,4 +109,7 @@ def is_version_affected(version: str, range_spec: str) -> bool:
             
     return True
 
-semver_udf = udf(compare_semver, IntegerType())
+if udf is not None and IntegerType is not None:
+    semver_udf = udf(compare_semver, IntegerType())
+else:
+    semver_udf = None

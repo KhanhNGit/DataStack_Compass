@@ -297,7 +297,7 @@ def transform_releases(
 
     try:
         bronze_df = (
-            spark.read.format("delta").load(bronze_uri)
+            spark.read.format("iceberg").load(bronze_uri)
             .filter(F.col("tool_name") == tool_name)
         )
         # B-10: Skip processed filter when reprocessing
@@ -440,7 +440,7 @@ def transform_releases(
         )
         (
             rejected_output.write
-            .format("delta")
+            .format("iceberg")
             .mode("append")
             .save(rejected_uri)
         )
@@ -550,7 +550,7 @@ def transform_releases(
         # Bảng chưa tồn tại → tạo mới
         (
             silver_df.write
-            .format("delta")
+            .format("iceberg")
             .mode("overwrite")
             .save(silver_uri)
         )

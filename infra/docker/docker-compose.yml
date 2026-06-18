@@ -3,18 +3,26 @@
 # Services: MinIO, StarRocks, PostgreSQL (Airflow metadata), Airflow
 ###############################################################################
 
-version: "3.9"
 
 x-airflow-common: &airflow-common
-  image: apache/airflow:2.8.0
+  build:
+    context: .
+    dockerfile: Dockerfile.airflow
+  env_file:
+    - ../../.env
   environment: &airflow-env
+    MINIO_ENDPOINT: "http://minio:9000"
+    STARROCKS_HOST: "starrocks"
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CORE__LOAD_EXAMPLES: "False"
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "True"
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "False"
+    AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/compass_project/ingestion/dags
+    PYTHONPATH: /opt/airflow/compass_project
   volumes:
-    - ../../ingestion/dags:/opt/airflow/dags
+    - ../../:/opt/airflow/compass_project
+    - ./logs/airflow:/opt/airflow/logs
   networks:
     - datastack-net
   restart: unless-stopped
@@ -24,7 +32,7 @@ services:
   # MinIO — S3-compatible Object Storage (Bronze / Silver / Gold layers)
   # ---------------------------------------------------------------------------
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: datastack-minio
     command: server /data --console-address ":9001"
     ports:
@@ -38,7 +46,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1G
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 15s
@@ -53,7 +61,7 @@ services:
   # MinIO Init — Create lakehouse buckets (bronze, silver, gold)
   # ---------------------------------------------------------------------------
   minio-init:
-    image: minio/mc
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
     container_name: datastack-minio-init
     depends_on:
       minio:
@@ -78,7 +86,7 @@ services:
   # StarRocks — OLAP Engine (All-in-One: FE + BE)
   # ---------------------------------------------------------------------------
   starrocks:
-    image: starrocks/allin1-ubuntu:latest
+    image: starrocks/allin1-ubuntu:3.5.1
     container_name: datastack-starrocks
     ports:
       - "8030:8030"   # FE HTTP port
@@ -88,13 +96,14 @@ services:
       FE_JAVA_OPTS: "-Xmx2g"
       BE_JAVA_OPTS: "-Xmx2g"
     volumes:
-      - ./data/starrocks:/data
+      - ./data/starrocks/fe_meta:/data/deploy/starrocks/fe/meta
+      - ./data/starrocks/be_storage:/data/deploy/starrocks/be/storage
     deploy:
       resources:
         limits:
           memory: 4G
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-P", "9030", "-u", "root"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-P", "9030", "-u", "root"]
       interval: 30s
       timeout: 10s
       retries: 10
@@ -107,7 +116,7 @@ services:
   # PostgreSQL — Airflow Metadata Database
   # ---------------------------------------------------------------------------
   postgres:
-    image: postgres:15-alpine
+    image: postgres:17.4-alpine
     container_name: datastack-postgres
     ports:
       - "5432:5432"
@@ -120,7 +129,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 256M
+          memory: 512M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U airflow"]
       interval: 10s
@@ -143,14 +152,7 @@ services:
     command: >
       bash -c "
         airflow db migrate &&
-        airflow users create
-          --role Admin
-          --username admin
-          --password admin
-          --email admin@local.com
-          --firstname Admin
-          --lastname User ||
-        true
+        airflow users create --role Admin --username admin --password admin --email admin@local.com --firstname Admin --lastname User || true
       "
     deploy:
       resources:
@@ -226,7 +228,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1G
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 15s
@@ -253,7 +255,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128M
+          memory: 512M
     networks:
       - datastack-net
     restart: unless-stopped

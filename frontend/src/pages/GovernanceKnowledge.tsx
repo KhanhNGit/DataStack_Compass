@@ -68,7 +68,7 @@ export default function GovernanceKnowledge() {
   });
 
   // Derived filtered bulletins
-  const filteredBulletins = allBulletins.filter(b => {
+  const filteredBulletins = allBulletins.filter((b: Bulletin) => {
     if (bulletinSeverityFilter !== 'All' && b.severity !== bulletinSeverityFilter) return false;
     if (bulletinToolFilter !== 'All' && b.tool !== bulletinToolFilter) return false;
     return true;
@@ -136,7 +136,7 @@ export default function GovernanceKnowledge() {
             <EmptyState.NoBulletins />
           ) : (
             <div className="divide-y divide-slate-100">
-              {filteredBulletins.map(bulletin => (
+              {filteredBulletins.map((bulletin: Bulletin) => (
                 <div 
                   key={bulletin.id}
                   onClick={() => setSelectedBulletin(bulletin)}

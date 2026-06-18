@@ -7,8 +7,8 @@
 # Core
 pyspark==3.5.1
 
-# Delta Lake (must match Spark version — 3.5.x → delta-spark 3.1.x)
-delta-spark==3.1.0
+# Iceberg
+# No Python package strictly required for Iceberg Spark, using jars.
 
 # S3A / Hadoop AWS connector
 # NOTE: hadoop-aws JAR is bundled with PySpark; this env var points Spark
