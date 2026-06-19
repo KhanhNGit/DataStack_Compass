@@ -140,7 +140,7 @@ def sync_asset_inventory():
         
         with conn.cursor() as cursor:
             # Lấy list tool_name hợp lệ để validate
-            cursor.execute("SELECT DISTINCT tool_name FROM minio_delta_catalog.silver.silver_releases")
+            cursor.execute("SELECT DISTINCT tool_name FROM minio_iceberg_catalog.silver.silver_releases")
             valid_tools = set([row[0] for row in cursor.fetchall()])
             
             if not valid_tools:

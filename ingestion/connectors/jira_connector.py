@@ -38,13 +38,41 @@ class JiraReleaseConnector(BaseConnector):
             h["Authorization"] = f"Basic {b64_auth}"
         return h
 
+    def _get_latest_version(self) -> str:
+        url = f"{self.base_url}/rest/api/2/project/{self.project_key}/versions"
+        resp = requests.get(url, headers=self.headers, timeout=15)
+        if resp.status_code >= 400:
+            raise ConnectorError(f"Jira API error fetching versions: {resp.status_code} {resp.text}", status_code=resp.status_code, url=url)
+        versions_data = resp.json()
+        
+        from packaging.version import parse, InvalidVersion
+        version_map = {}
+        for v in versions_data:
+            if v.get('released') and not v.get('archived'):
+                original_name = v.get('name', '')
+                try:
+                    parsed_v = parse(original_name)
+                    # Lọc bỏ các bản không ổn định nếu cần, hiện tại lấy tất cả
+                    version_map[parsed_v] = original_name
+                except InvalidVersion:
+                    continue
+                    
+        sorted_parsed_versions = sorted(version_map.keys(), reverse=True)
+        if not sorted_parsed_versions:
+            raise ConnectorError(f"No valid semantic versions found for Jira project {self.project_key}")
+            
+        return version_map[sorted_parsed_versions[0]]
+
     def fetch(self, tool_name: str, version: str) -> dict:
         """Lấy danh sách Jira issues theo version.
         
-        Sử dụng JQL: project={project} AND issuetype in (Bug, "New Feature", Improvement) AND fixVersion={version}
+        Sử dụng JQL: project={project} AND issuetype in (Bug, "New Feature", Improvement) AND status in (Resolved, Closed) AND fixVersion={version}
         """
-        # Format JQL
-        jql = f'project="{self.project_key}" AND issuetype in (Bug, "New Feature", Improvement) AND fixVersion="{version}"'
+        if version == "latest":
+            version = self._get_latest_version()
+            
+        # Format JQL (bỏ issuetype filter để lấy được mọi loại ticket)
+        jql = f'project="{self.project_key}" AND status in (Resolved, Closed) AND fixVersion="{version}"'
         
         params = {
             "jql": jql,
@@ -52,7 +80,7 @@ class JiraReleaseConnector(BaseConnector):
             "fields": "summary,issuetype,status,fixVersions"
         }
         
-        url = f"{self.base_url}/rest/api/3/search"
+        url = f"{self.base_url}/rest/api/2/search"
         logger.info(f"Fetching Jira issues for {self.project_key} version {version}")
         
         resp = requests.get(url, headers=self.headers, params=params, timeout=30)

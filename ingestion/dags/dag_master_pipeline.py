@@ -112,7 +112,7 @@ def _cleanup_bronze_old_data():
     """Chạy Spark expire_snapshots xoá dữ liệu cũ hơn 90 ngày."""
     from pyspark.sql import SparkSession
     
-    logger.info("Starting Iceberg Expire Snapshots...")
+    logger.info("Starting Delta Expire Snapshots...")
     builder = (SparkSession.builder
         .appName("CleanupBronze")
         .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
@@ -183,7 +183,8 @@ with DAG(
     spark_submit_cmd = f"""
         spark-submit \\
         --master "local[*]" \\
-        --packages org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.5.0,org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262 \\
+        --driver-memory 512m \\
+        --executor-memory 512m \\
         --conf "spark.sql.extensions=org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions" \\
         --conf "spark.sql.catalog.local=org.apache.iceberg.spark.SparkCatalog" \\
         --conf "spark.sql.catalog.local.type=hadoop" \\

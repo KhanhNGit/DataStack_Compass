@@ -80,8 +80,9 @@ _DEPRECATED_PATTERNS = [
     ),
 ]
 
-# Schema cho parsing raw_json từ GitHub API response
-_GITHUB_RELEASE_SCHEMA = StructType([
+# Schema cho parsing raw_json từ các nguồn khác nhau (GitHub, Jira, Custom)
+_RAW_JSON_SCHEMA = StructType([
+    # -- GitHub fields --
     StructField("tag_name", StringType(), nullable=True),
     StructField("body", StringType(), nullable=True),
     StructField("published_at", StringType(), nullable=True),
@@ -92,6 +93,18 @@ _GITHUB_RELEASE_SCHEMA = StructType([
         StructField("body", StringType(), nullable=True),
         StructField("published_at", StringType(), nullable=True),
         StructField("html_url", StringType(), nullable=True),
+    ])), nullable=True),
+    
+    # -- Jira fields --
+    StructField("version", StringType(), nullable=True),
+    
+    # -- Jira fields --
+    StructField("issues", ArrayType(StructType([
+        StructField("id", StringType(), nullable=True),
+        StructField("type", StringType(), nullable=True),
+        StructField("summary", StringType(), nullable=True),
+        StructField("status", StringType(), nullable=True),
+        StructField("url", StringType(), nullable=True),
     ])), nullable=True),
 ])
 
@@ -273,7 +286,6 @@ def transform_releases(
     dict[str, int]
         Statistics: ``{total_read, valid, rejected, upserted}``.
     """
-    from delta.tables import DeltaTable
 
     bronze_uri = _bronze_path()
     silver_uri = _silver_path()
@@ -297,7 +309,7 @@ def transform_releases(
 
     try:
         bronze_df = (
-            spark.read.format("iceberg").load(bronze_uri)
+            spark.read.table("local.bronze.bronze_raw_releases")
             .filter(F.col("tool_name") == tool_name)
         )
         # B-10: Skip processed filter when reprocessing
@@ -325,7 +337,7 @@ def transform_releases(
 
     parsed_df = bronze_df.withColumn(
         "_parsed",
-        F.from_json(F.col("raw_json"), _GITHUB_RELEASE_SCHEMA),
+        F.from_json(F.col("raw_json"), _RAW_JSON_SCHEMA),
     ).withColumn(
         "_parse_error",
         F.when(F.col("_parsed").isNull(), F.lit("Malformed JSON"))
@@ -340,15 +352,13 @@ def transform_releases(
     if error_count > 0:
         logger.warning("  %d records had JSON parse errors", error_count)
 
-    # ─── Explode nested releases (nếu có) ────────────────────────────────
-    # Khi connector fetch version="latest", raw_json chứa key "releases" là list
-    # Cần explode ra thành individual releases
-    has_releases_list = parsed_ok_df.filter(
-        F.col("_parsed.releases").isNotNull()
-    )
-    has_single_release = parsed_ok_df.filter(
-        F.col("_parsed.releases").isNull()
-    )
+    # ─── Phân tách xử lý theo source_type (GitHub vs Jira) ────────────────
+    github_df = parsed_ok_df.filter(F.col("source_type") == "github")
+    jira_df = parsed_ok_df.filter(F.col("source_type") == "jira")
+
+    # 1. Xử lý GitHub (Explode releases list nếu có)
+    has_releases_list = github_df.filter(F.col("_parsed.releases").isNotNull())
+    has_single_release = github_df.filter(F.col("_parsed.releases").isNull())
 
     if has_releases_list.count() > 0:
         exploded_df = (
@@ -363,17 +373,11 @@ def transform_releases(
                 F.col("_release.body").alias("_body"),
                 F.col("_release.published_at").alias("_published_at"),
                 F.col("_release.html_url").alias("_html_url"),
+                F.lit(None).alias("_jira_issues")
             )
         )
     else:
-        exploded_df = spark.createDataFrame([], StructType([
-            StructField("tool_name", StringType()),
-            StructField("source_url", StringType()),
-            StructField("_raw_version", StringType()),
-            StructField("_body", StringType()),
-            StructField("_published_at", StringType()),
-            StructField("_html_url", StringType()),
-        ]))
+        exploded_df = None
 
     single_df = has_single_release.select(
         F.col("tool_name"),
@@ -384,10 +388,35 @@ def transform_releases(
         F.col("_parsed.body").alias("_body"),
         F.col("_parsed.published_at").alias("_published_at"),
         F.col("_parsed.html_url").alias("_html_url"),
+        F.lit(None).alias("_jira_issues")
+    )
+
+    all_github_df = single_df
+    if exploded_df is not None:
+        all_github_df = all_github_df.unionByName(exploded_df, allowMissingColumns=True)
+
+    # 2. Xử lý Jira
+    parsed_jira_df = jira_df.select(
+        F.col("tool_name"),
+        F.col("source_url"),
+        F.col("crawled_at"),
+        F.col("source_type"),
+        F.col("_parsed.version").alias("_raw_version"),
+        F.lit("").alias("_body"),
+        F.lit(None).cast(StringType()).alias("_published_at"),
+        F.col("source_url").alias("_html_url"),
+        F.expr("""
+            transform(_parsed.issues, x -> named_struct(
+                'id', x.id,
+                'type', x.type,
+                'title', x.summary,
+                'url', x.url
+            ))
+        """).alias("_jira_issues")
     )
 
     # Union tất cả releases
-    all_releases_df = single_df.unionByName(exploded_df, allowMissingColumns=True)
+    all_releases_df = all_github_df.unionByName(parsed_jira_df, allowMissingColumns=True)
     # Deduplicate theo raw version
     all_releases_df = all_releases_df.dropDuplicates(["tool_name", "_raw_version"])
 
@@ -438,12 +467,15 @@ def transform_releases(
             F.col("source_url"),
             F.current_timestamp().alias("rejected_at"),
         )
-        (
-            rejected_output.write
-            .format("iceberg")
-            .mode("append")
-            .save(rejected_uri)
-        )
+        rejected_table_id = "local.silver.silver_rejected"
+        try:
+            spark.read.table(rejected_table_id)
+            rejected_output.writeTo(rejected_table_id).append()
+        except Exception as e:
+            if "TABLE_OR_VIEW_NOT_FOUND" in str(e) or "not found" in str(e).lower():
+                rejected_output.writeTo(rejected_table_id).create()
+            else:
+                raise
 
     if valid_count == 0:
         logger.info("  No valid releases to process — exiting")
@@ -468,6 +500,29 @@ def transform_releases(
         result = extract_deprecated_apis(body)
         return result if result is not None else []
 
+    @F.udf(ArrayType(StructType([
+        StructField("id", StringType(), nullable=False),
+        StructField("type", StringType(), nullable=False),
+        StructField("title", StringType(), nullable=False),
+        StructField("url", StringType(), nullable=True),
+    ])))
+    def udf_extract_github_issues(body):
+        if not body: return []
+        issues = []
+        current_category = "General"
+        lines = body.split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line: continue
+            if line.startswith('#'):
+                import re
+                current_category = re.sub(r'^#+\s*', '', line)
+            elif line.startswith('- ') or line.startswith('* '):
+                title = line[2:].strip()
+                if title:
+                    issues.append({"id": "", "type": current_category[:50], "title": title[:255], "url": None})
+        return issues
+
     enriched_df = (
         valid_df
         .withColumn("breaking_changes", udf_extract_breaking(F.col("_body")))
@@ -475,6 +530,10 @@ def transform_releases(
         .withColumn(
             "release_date",
             F.to_date(F.to_timestamp(F.col("_published_at"))),
+        )
+        .withColumn(
+            "_parsed_github_issues",
+            udf_extract_github_issues(F.col("_body"))
         )
     )
 
@@ -486,7 +545,10 @@ def transform_releases(
     df_without_bc = enriched_df.filter(F.size(F.col("breaking_changes")) == 0)
 
     if df_with_bc.rdd.isEmpty():
-        enriched_df = enriched_df.withColumn("breaking_changes_enriched", F.lit(None))
+        enriched_df = enriched_df.withColumn(
+            "breaking_changes_enriched", 
+            F.lit(None).cast(SCHEMAS["silver_releases"]["breaking_changes_enriched"].dataType)
+        )
     else:
         # Preserve original columns for groupBy
         _group_cols = [c for c in enriched_df.columns]
@@ -497,7 +559,10 @@ def transform_releases(
             .groupBy(*_group_cols)
             .agg(F.collect_list("_bc_enriched").alias("breaking_changes_enriched"))
         )
-        df_without_bc = df_without_bc.withColumn("breaking_changes_enriched", F.lit(None))
+        df_without_bc = df_without_bc.withColumn(
+            "breaking_changes_enriched", 
+            F.lit(None).cast(SCHEMAS["silver_releases"]["breaking_changes_enriched"].dataType)
+        )
         enriched_df = df_reagg.unionByName(df_without_bc, allowMissingColumns=True)
 
     # ─── Step 5: Build silver DataFrame ──────────────────────────────────
@@ -509,7 +574,9 @@ def transform_releases(
         F.col("tool_name"),
         F.col("version"),
         F.col("release_date"),
-        F.lit(None).cast(SCHEMAS["silver_releases"]["issues"].dataType).alias("issues"),
+        F.when(F.col("source_type") == "jira", F.col("_jira_issues"))
+         .otherwise(F.col("_parsed_github_issues"))
+         .cast(SCHEMAS["silver_releases"]["issues"].dataType).alias("issues"),
         F.col("breaking_changes"),
         F.col("breaking_changes_enriched"),
         F.col("deprecated_apis"),
@@ -523,52 +590,47 @@ def transform_releases(
     silver_df.cache()
     upserted = silver_df.count()
 
-    if DeltaTable.isDeltaTable(spark, silver_uri):
-        delta_table = DeltaTable.forPath(spark, silver_uri)
+    silver_table_id = "local.silver.silver_releases"
+    table_exists = False
+    try:
+        spark.read.table(silver_table_id)
+        table_exists = True
+    except Exception:
+        pass
 
-        (
-            delta_table.alias("target")
-            .merge(
-                silver_df.alias("source"),
-                "target.tool_name = source.tool_name "
-                "AND target.version = source.version"
-            )
-            .whenMatchedUpdate(set={
-                "release_date": "source.release_date",
-                "issues": "source.issues",
-                "breaking_changes": "source.breaking_changes",
-                "breaking_changes_enriched": "source.breaking_changes_enriched",
-                "deprecated_apis": "source.deprecated_apis",
-                "processed_at": "source.processed_at",
-            })
-            .whenNotMatchedInsertAll()
-            .execute()
-        )
-
+    if table_exists:
+        silver_df.createOrReplaceTempView("source_silver")
+        spark.sql(f"""
+            MERGE INTO {silver_table_id} target
+            USING source_silver source
+            ON target.tool_name = source.tool_name AND target.version = source.version
+            WHEN MATCHED THEN UPDATE SET
+                target.release_date = source.release_date,
+                target.issues = source.issues,
+                target.breaking_changes = source.breaking_changes,
+                target.breaking_changes_enriched = source.breaking_changes_enriched,
+                target.deprecated_apis = source.deprecated_apis,
+                target.processed_at = source.processed_at
+            WHEN NOT MATCHED THEN INSERT *
+        """)
         logger.info("  ✓ Merged %d records into existing silver_releases", upserted)
     else:
         # Bảng chưa tồn tại → tạo mới
-        (
-            silver_df.write
-            .format("iceberg")
-            .mode("overwrite")
-            .save(silver_uri)
-        )
+        silver_df.writeTo(silver_table_id).createOrReplace()
         logger.info("  ✓ Created silver_releases with %d records", upserted)
 
     # ─── Step 7: Update bronze records as processed ───────────────────────
     logger.info("Step 7/7 — Updating bronze records as processed")
-    if DeltaTable.isDeltaTable(spark, bronze_uri):
-        bronze_table = DeltaTable.forPath(spark, bronze_uri)
-        update_cond = (F.col("tool_name") == tool_name) & (~F.col("processed"))
-        if run_date:
-            update_cond = update_cond & (F.to_date(F.col("crawled_at")) == F.lit(run_date))
+    bronze_table_id = "local.bronze.bronze_raw_releases"
+    update_cond = f"tool_name = '{tool_name}' AND NOT processed"
+    if run_date:
+        update_cond += f" AND DATE(crawled_at) = '{run_date}'"
         
-        bronze_table.update(
-            condition=update_cond,
-            set={"processed": F.lit(True)}
-        )
+    try:
+        spark.sql(f"UPDATE {bronze_table_id} SET processed = true WHERE {update_cond}")
         logger.info("  ✓ Updated processed=True in bronze_raw_releases")
+    except Exception as e:
+        logger.error(f"  ✗ Failed to update bronze table: {e}")
 
     # ─── Summary ─────────────────────────────────────────────────────────
     stats = {

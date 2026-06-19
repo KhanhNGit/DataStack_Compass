@@ -8,10 +8,10 @@ release details, compatibility, và full-text search.
 Prefix: /api/v1/tools
 
 Query StarRocks External Catalog:
-    - minio_delta_catalog.gold.gold_tool_summary
-    - minio_delta_catalog.silver.silver_releases
-    - minio_delta_catalog.silver.silver_cves
-    - minio_delta_catalog.silver.silver_compatibility
+    - minio_iceberg_catalog.gold.gold_tool_summary
+    - minio_iceberg_catalog.silver.silver_releases
+    - minio_iceberg_catalog.silver.silver_cves
+    - minio_iceberg_catalog.silver.silver_compatibility
 
 SQL syntax: StarRocks (MySQL-compatible).
     - %s placeholders (KHÔNG dùng $1 PostgreSQL)
@@ -42,10 +42,10 @@ router = APIRouter()
 # StarRocks External Catalog table references
 # =============================================================================
 
-_GOLD_SUMMARY = "minio_delta_catalog.gold.gold_tool_summary"
-_SILVER_RELEASES = "minio_delta_catalog.silver.silver_releases"
-_SILVER_CVES = "minio_delta_catalog.silver.silver_cves"
-_SILVER_COMPAT = "minio_delta_catalog.silver.silver_compatibility"
+_GOLD_SUMMARY = "minio_iceberg_catalog.gold.gold_tool_summary"
+_SILVER_RELEASES = "minio_iceberg_catalog.silver.silver_releases"
+_SILVER_CVES = "minio_iceberg_catalog.silver.silver_cves"
+_SILVER_COMPAT = "minio_iceberg_catalog.silver.silver_compatibility"
 
 
 # =============================================================================

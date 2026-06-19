@@ -12,9 +12,9 @@ logger = logging.getLogger(__name__)
 # BUG-06 fix: prefix is set in main.py include_router(), not here
 router = APIRouter()
 
-_GOLD_SUMMARY = "minio_delta_catalog.gold.gold_tool_summary"
-_SILVER_CVES = "minio_delta_catalog.silver.silver_cves"
-_SILVER_BLOGS = "minio_delta_catalog.silver.silver_blogs"
+_GOLD_SUMMARY = "minio_iceberg_catalog.gold.gold_tool_summary"
+_SILVER_CVES = "minio_iceberg_catalog.silver.silver_cves"
+_SILVER_BLOGS = "minio_iceberg_catalog.silver.silver_blogs"
 
 
 @router.get("/bulletins", response_model=BaseResponse)

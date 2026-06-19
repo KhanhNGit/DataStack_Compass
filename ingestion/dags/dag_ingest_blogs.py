@@ -87,10 +87,11 @@ def dag_ingest_blogs():
         table_path = f"s3a://{bucket}/silver_blogs/"
         
         # Upsert by URL
+        table_identifier = "local.silver.silver_blogs"
         try:
             table_exists = False
             try:
-                spark.read.format("iceberg").load(table_path)
+                spark.read.table(table_identifier)
                 table_exists = True
             except Exception:
                 pass
@@ -98,7 +99,7 @@ def dag_ingest_blogs():
             if table_exists:
                 df.createOrReplaceTempView("source_blogs")
                 spark.sql(f"""
-                    MERGE INTO local.{bucket}.silver_blogs t
+                    MERGE INTO {table_identifier} t
                     USING source_blogs s
                     ON t.url = s.url
                     WHEN MATCHED THEN UPDATE SET *
@@ -106,12 +107,11 @@ def dag_ingest_blogs():
                 """)
                 logger.info(f"Merged {df.count()} blog posts into silver_blogs")
             else:
-                df.write.format("iceberg").mode("overwrite").save(table_path)
+                df.writeTo(table_identifier).createOrReplace()
                 logger.info(f"Created silver_blogs table with {df.count()} rows")
         except Exception as e:
-            logger.warning(f"Merge failed, trying overwrite/append: {e}")
-            df.write.format("iceberg").mode("append").save(table_path)
-            
+            logger.warning(f"Merge failed: {e}")
+            raise
         spark.stop()
         return tools
 

@@ -8,7 +8,7 @@ Tất cả SQL syntax PHẢI tương thích StarRocks — KHÔNG dùng PostgreSQ
 StarRocks specifics:
 - MySQL protocol trên port 9030
 - Hỗ trợ: LIMIT/OFFSET, GROUP BY, HAVING, window functions
-- External Catalog: ``minio_delta_catalog.gold.gold_tool_summary``
+- External Catalog: ``minio_iceberg_catalog.gold.gold_tool_summary``
 - KHÔNG hỗ trợ: RETURNING, ON CONFLICT, CTE recursive
 """
 

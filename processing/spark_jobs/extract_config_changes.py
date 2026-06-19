@@ -57,11 +57,8 @@ def main():
     spark = get_spark_session("extract_config_changes")
     
     # 1. Read Bronze raw releases
-    bronze_bucket = os.environ.get("MINIO_BUCKET_BRONZE", "bronze")
-    bronze_path = f"s3a://{bronze_bucket}/bronze_raw_releases/"
-    
     try:
-        df_raw = spark.read.format("iceberg").load(bronze_path).filter(F.col("tool_name") == tool)
+        df_raw = spark.read.table("local.bronze.bronze_raw_releases").filter(F.col("tool_name") == tool)
     except Exception as e:
         logger.error(f"Cannot read bronze_raw_releases: {e}")
         return
@@ -190,25 +187,28 @@ def main():
         spark.stop()
         return
     
-    # Delta Merge
-    silver_bucket = os.environ.get("MINIO_BUCKET_SILVER", "silver")
-    table_path = f"s3a://{silver_bucket}/silver_config_changes/"
+    # Iceberg Merge
+    table_identifier = "local.silver.silver_config_changes"
     
     try:
-        from delta.tables import DeltaTable
-        if DeltaTable.isDeltaTable(spark, table_path):
-            dt = DeltaTable.forPath(spark, table_path)
-            (
-                dt.alias("t").merge(
-                    df_changes.alias("s"),
-                    "t.tool_name = s.tool_name AND t.from_version = s.from_version AND t.to_version = s.to_version AND t.param_name = s.param_name"
-                )
-                .whenMatchedUpdateAll()
-                .whenNotMatchedInsertAll()
-                .execute()
-            )
+        table_exists = False
+        try:
+            spark.read.table(table_identifier)
+            table_exists = True
+        except Exception:
+            pass
+
+        if table_exists:
+            df_changes.createOrReplaceTempView("source_changes")
+            spark.sql(f"""
+                MERGE INTO {table_identifier} t
+                USING source_changes s
+                ON t.tool_name = s.tool_name AND t.from_version = s.from_version AND t.to_version = s.to_version AND t.param_name = s.param_name
+                WHEN MATCHED THEN UPDATE SET *
+                WHEN NOT MATCHED THEN INSERT *
+            """)
         else:
-            df_changes.write.format("iceberg").mode("overwrite").save(table_path)
+            df_changes.writeTo(table_identifier).createOrReplace()
         logger.info(f"Successfully upserted {df_changes.count()} config changes for {tool}.")
     except Exception as e:
         logger.error(f"Merge failed for {tool}: {e}")

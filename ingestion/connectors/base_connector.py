@@ -245,8 +245,18 @@ class BaseConnector(abc.ABC):
 
         df = spark.createDataFrame([row], schema)
 
-        df.write.format("iceberg").mode("append").save(table_path)
+        table_identifier = "local.bronze.bronze_raw_releases"
 
+        try:
+            # Check if table exists
+            spark.read.table(table_identifier)
+            df.writeTo(table_identifier).append()
+        except Exception as e:
+            if "TABLE_OR_VIEW_NOT_FOUND" in str(e) or "not found" in str(e).lower():
+                # Create table
+                df.writeTo(table_identifier).create()
+            else:
+                raise
         logger.info(
             "Saved to bronze: tool=%s version=%s path=%s",
             tool_name,

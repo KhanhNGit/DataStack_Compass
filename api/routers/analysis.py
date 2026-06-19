@@ -36,12 +36,12 @@ router = APIRouter()
 # Table references
 # =============================================================================
 
-_GOLD_SUMMARY = "minio_delta_catalog.gold.gold_tool_summary"
-_SILVER_RELEASES = "minio_delta_catalog.silver.silver_releases"
-_SILVER_CVES = "minio_delta_catalog.silver.silver_cves"
-_SILVER_COMPAT = "minio_delta_catalog.silver.silver_compatibility"
-_SILVER_LICENSES = "minio_delta_catalog.silver.silver_license_changes"
-_SILVER_CONFIG = "minio_delta_catalog.silver.silver_config_changes"
+_GOLD_SUMMARY = "minio_iceberg_catalog.gold.gold_tool_summary"
+_SILVER_RELEASES = "minio_iceberg_catalog.silver.silver_releases"
+_SILVER_CVES = "minio_iceberg_catalog.silver.silver_cves"
+_SILVER_COMPAT = "minio_iceberg_catalog.silver.silver_compatibility"
+_SILVER_LICENSES = "minio_iceberg_catalog.silver.silver_license_changes"
+_SILVER_CONFIG = "minio_iceberg_catalog.silver.silver_config_changes"
 
 # =============================================================================
 # In-memory cache with TTL

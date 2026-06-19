@@ -3,7 +3,7 @@ DataStack Compass — CVEs Router
 ================================
 
 Endpoints cho CVE search, filtering, và statistics.
-Query StarRocks External Catalog (minio_delta_catalog.silver.silver_cves).
+Query StarRocks External Catalog (minio_iceberg_catalog.silver.silver_cves).
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_SILVER_CVES = "minio_delta_catalog.silver.silver_cves"
+_SILVER_CVES = "minio_iceberg_catalog.silver.silver_cves"
 _ASSET_INVENTORY = "compass_internal.asset_inventory"
 
 

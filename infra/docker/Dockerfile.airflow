@@ -13,5 +13,13 @@ RUN apt-get update \
 
 USER airflow
 
-# Install PySpark so Airflow can run spark-submit
-RUN pip install --no-cache-dir pyspark==3.5.1
+# Install PySpark and requirements so Airflow can run spark-submit
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir pyspark==3.5.1 \
+    && pip install --no-cache-dir -r /tmp/requirements.txt
+
+# Download offline JARs for Spark to prevent runtime Maven downloads
+RUN PYSPARK_JARS=$(python -c "import pyspark, os; print(os.path.join(os.path.dirname(pyspark.__file__), 'jars'))") \
+    && curl -sL https://repo1.maven.org/maven2/org/apache/iceberg/iceberg-spark-runtime-3.5_2.12/1.5.0/iceberg-spark-runtime-3.5_2.12-1.5.0.jar -o $PYSPARK_JARS/iceberg-spark-runtime-3.5_2.12-1.5.0.jar \
+    && curl -sL https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar -o $PYSPARK_JARS/hadoop-aws-3.3.4.jar \
+    && curl -sL https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar -o $PYSPARK_JARS/aws-java-sdk-bundle-1.12.262.jar

@@ -106,7 +106,7 @@ class _ExpectationRunner:
         from pyspark.sql import functions as F
 
         self._df = (
-            self.spark.read.format("iceberg").load(self.table_path)
+            self.spark.read.table("local.silver.silver_releases")
             .filter(F.col("tool_name") == self.tool_name)
         )
 

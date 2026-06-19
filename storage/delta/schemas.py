@@ -61,15 +61,22 @@ bronze_raw_releases = StructType([
     StructField("processed", BooleanType(), nullable=False),
 ])
 
+bronze_cves = StructType([
+    StructField("cve_id", StringType(), nullable=False),
+    StructField("raw_json", StringType(), nullable=False),
+    StructField("crawled_at", TimestampType(), nullable=False),
+    StructField("processed", BooleanType(), nullable=False),
+])
+
 # =============================================================================
 # 2. Silver Layer — Cleaned & structured
 # =============================================================================
 
 _issue_struct = StructType([
-    StructField("id", StringType(), nullable=False),
-    StructField("type", StringType(), nullable=False),
+    StructField("id", StringType(), nullable=True),
+    StructField("type", StringType(), nullable=True),
     # type ∈ {"Bug", "Feature", "Improvement"}
-    StructField("title", StringType(), nullable=False),
+    StructField("title", StringType(), nullable=True),
     StructField("url", StringType(), nullable=True),
 ])
 
@@ -82,26 +89,35 @@ silver_releases = StructType([
     StructField("breaking_changes", ArrayType(StringType()), nullable=True),
     StructField("breaking_changes_enriched", ArrayType(
         StructType([
-            StructField("text", StringType(), nullable=False),
-            StructField("category", StringType(), nullable=False),
-            StructField("impact", StringType(), nullable=False),
-            StructField("action_required", BooleanType(), nullable=False),
+            StructField("text", StringType(), nullable=True),
+            StructField("category", StringType(), nullable=True),
+            StructField("impact", StringType(), nullable=True),
+            StructField("action_required", BooleanType(), nullable=True),
         ])
     ), nullable=True),
     StructField("deprecated_apis", ArrayType(StringType()), nullable=True),
     StructField("processed_at", TimestampType(), nullable=False),
 ])
 
+_affected_range_struct = StructType([
+    StructField("from_version", StringType(), nullable=True),
+    StructField("to_version", StringType(), nullable=True),
+    StructField("from_inclusive", BooleanType(), nullable=True),
+    StructField("to_inclusive", BooleanType(), nullable=True),
+])
+
 silver_cves = StructType([
     StructField("cve_id", StringType(), nullable=False),
     StructField("tool_name", StringType(), nullable=False),
-    StructField("affected_versions", ArrayType(StringType()), nullable=False),
-    StructField("fixed_in_version", StringType(), nullable=True),
-    StructField("cvss_score", FloatType(), nullable=True),
-    StructField("severity", StringType(), nullable=False),
-    # severity ∈ {"Critical", "High", "Medium", "Low"}
     StructField("description", StringType(), nullable=True),
+    StructField("severity", StringType(), nullable=False),
+    StructField("cvss_score", FloatType(), nullable=True),
+    StructField("cwe", ArrayType(StringType()), nullable=True),
+    StructField("affected_ranges", ArrayType(_affected_range_struct), nullable=True),
+    StructField("affected_versions", ArrayType(StringType()), nullable=True),
+    StructField("references", ArrayType(StringType()), nullable=True),
     StructField("published_at", TimestampType(), nullable=True),
+    StructField("updated_at", TimestampType(), nullable=True),
 ])
 
 silver_compatibility = StructType([
@@ -168,6 +184,7 @@ gold_tool_summary = StructType([
 
 _TABLE_REGISTRY: Dict[str, tuple[str, StructType]] = {
     "bronze_raw_releases":      ("bronze", bronze_raw_releases),
+    "bronze_cves":              ("bronze", bronze_cves),
     "silver_releases":          ("silver", silver_releases),
     "silver_cves":              ("silver", silver_cves),
     "silver_compatibility":     ("silver", silver_compatibility),

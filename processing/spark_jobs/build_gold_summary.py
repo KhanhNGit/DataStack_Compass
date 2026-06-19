@@ -130,6 +130,17 @@ def semver_sort_key(version: Optional[str]) -> str:
 _udf_semver_sort_key = F.udf(semver_sort_key, StringType())
 _udf_compare_semver = F.udf(_canonical_compare_semver, IntegerType())
 
+def calculate_semver_risk(latest: str, previous: str) -> str:
+    if not latest or not previous: return "Unknown"
+    l_maj, l_min, l_pat, _ = _canonical_parse_semver(latest)
+    p_maj, p_min, p_pat, _ = _canonical_parse_semver(previous)
+    if l_maj > p_maj: return "High"
+    if l_min > p_min: return "Medium"
+    if l_pat > p_pat: return "Low"
+    return "Unknown"
+
+_udf_calc_risk = F.udf(calculate_semver_risk, StringType())
+
 
 # =============================================================================
 # EOL database loader
@@ -217,7 +228,6 @@ def build_gold_tool_summary(spark: SparkSession) -> Dict[str, int]:
     dict[str, int]
         Statistics: ``{tools_processed, cves_counted}``.
     """
-    from delta.tables import DeltaTable
 
     silver_rel_path = _silver_releases_path()
     silver_cve_path = _silver_cves_path()
@@ -267,14 +277,22 @@ def build_gold_tool_summary(spark: SparkSession) -> Dict[str, int]:
 
     w = Window.partitionBy("tool_name").orderBy(F.col("_semver_key").desc())
 
+    # Dùng lag/lead để lấy previous_version
+    releases_with_prev = releases_with_key.withColumn(
+        "previous_version",
+        F.lead("version", 1).over(w)  # order desc nên bản trước đó là row tiếp theo
+    )
+
     latest_versions_df = (
-        releases_with_key
+        releases_with_prev
         .withColumn("_rank", F.row_number().over(w))
         .filter(F.col("_rank") == 1)
         .select(
             F.col("tool_name"),
             F.col("version").alias("latest_version"),
+            F.col("previous_version")
         )
+        .withColumn("risk_level", _udf_calc_risk(F.col("latest_version"), F.col("previous_version")))
     )
 
     logger.info("  Computed latest versions for %d tools", latest_versions_df.count())
@@ -298,9 +316,11 @@ def build_gold_tool_summary(spark: SparkSession) -> Dict[str, int]:
         active_cves_df = cves_with_latest.filter(
             F.col("fixed_in_version").isNull() |
             (F.col("fixed_in_version") == "") |
-            # fixed_in_version > latest_version means fix hasn't been reached
             (_udf_compare_semver(F.col("fixed_in_version"), F.col("latest_version")) > 0)
         )
+
+        # Kiểm tra xem latest_version có phải là bản vá CVE không
+        fixes_df = cves_with_latest.filter(F.col("fixed_in_version") == F.col("latest_version")).groupBy("tool_name").agg(F.lit(True).alias("fixes_cve"))
 
         cve_counts_df = (
             active_cves_df.groupBy("tool_name")
@@ -312,7 +332,7 @@ def build_gold_tool_summary(spark: SparkSession) -> Dict[str, int]:
                     F.when(F.col("severity") == "High", 1)
                 ).alias("total_cve_high"),
             )
-        )
+        ).join(fixes_df, on="tool_name", how="left").fillna(False, subset=["fixes_cve"])
     else:
         cve_counts_df = spark.createDataFrame(
             [],
@@ -320,6 +340,7 @@ def build_gold_tool_summary(spark: SparkSession) -> Dict[str, int]:
                 StructField("tool_name", StringType()),
                 StructField("total_cve_critical", IntegerType()),
                 StructField("total_cve_high", IntegerType()),
+                StructField("fixes_cve", F.BooleanType()),
             ]),
         )
 
@@ -351,10 +372,18 @@ def build_gold_tool_summary(spark: SparkSession) -> Dict[str, int]:
         F.current_timestamp(),
     )
 
+    # Nâng cấp risk_level lên CRITICAL nếu là bản vá CVE
+    summary_df = summary_df.withColumn(
+        "risk_level",
+        F.when(F.col("fixes_cve") == True, F.lit("CRITICAL")).otherwise(F.col("risk_level"))
+    )
+
     # Ensure column order matches gold schema
     gold_df = summary_df.select(
         F.col("tool_name"),
         F.col("latest_version"),
+        F.col("previous_version"),
+        F.col("risk_level"),
         F.col("eol_date"),
         F.col("eos_date"),
         F.col("total_cve_critical").cast(IntegerType()),
@@ -368,29 +397,35 @@ def build_gold_tool_summary(spark: SparkSession) -> Dict[str, int]:
     # ─── Step 5: Delta MERGE upsert ─────────────────────────────────────
     logger.info("Step 5/5 — Upserting into gold_tool_summary at %s", gold_path)
 
-    if DeltaTable.isDeltaTable(spark, gold_path):
-        delta_table = DeltaTable.forPath(spark, gold_path)
+    gold_table_id = "local.gold.gold_tool_summary"
+    table_exists = False
+    try:
+        spark.read.table(gold_table_id)
+        table_exists = True
+    except Exception:
+        pass
 
-        (
-            delta_table.alias("target")
-            .merge(
-                gold_df.alias("source"),
-                "target.tool_name = source.tool_name",
-            )
-            .whenMatchedUpdate(set={
-                "latest_version": "source.latest_version",
-                "eol_date": "source.eol_date",
-                "eos_date": "source.eos_date",
-                "total_cve_critical": "source.total_cve_critical",
-                "total_cve_high": "source.total_cve_high",
-                "last_updated": "source.last_updated",
-            })
-            .whenNotMatchedInsertAll()
-            .execute()
-        )
+    if table_exists:
+        gold_df.createOrReplaceTempView("source_gold")
+        spark.sql(f"""
+            MERGE INTO {gold_table_id} target
+            USING source_gold source
+            ON target.tool_name = source.tool_name
+            WHEN MATCHED THEN UPDATE SET
+                target.latest_version = source.latest_version,
+                target.previous_version = source.previous_version,
+                target.risk_level = source.risk_level,
+                target.eol_date = source.eol_date,
+                target.eos_date = source.eos_date,
+                target.total_cve_critical = source.total_cve_critical,
+                target.total_cve_high = source.total_cve_high,
+                target.last_updated = source.last_updated
+            WHEN NOT MATCHED THEN INSERT *
+        """)
         logger.info("  ✓ Merged %d tools into existing gold_tool_summary", tools_processed)
     else:
-        gold_df.write.format("iceberg").mode("overwrite").save(gold_path)
+        table_identifier = "local.gold.gold_tool_summary"
+        gold_df.writeTo(table_identifier).createOrReplace()
         logger.info("  ✓ Created gold_tool_summary with %d tools", tools_processed)
 
     stats = {
@@ -423,7 +458,7 @@ def print_starrocks_catalog_sql() -> str:
     MinIO mà KHÔNG cần ETL thêm. Nghĩa là:
 
     1. FastAPI backend chỉ cần query StarRocks bằng SQL thông thường:
-       ``SELECT * FROM minio_delta_catalog.gold.gold_tool_summary WHERE tool_name = 'kafka'``
+       ``SELECT * FROM minio_iceberg_catalog.gold.gold_tool_summary WHERE tool_name = 'kafka'``
 
     2. Không cần pipeline riêng để sync dữ liệu từ Delta Lake → StarRocks.
        StarRocks đọc Delta Lake metadata (transaction log) trực tiếp và
@@ -458,11 +493,11 @@ def print_starrocks_catalog_sql() -> str:
 --
 -- External Catalog cho phép StarRocks query trực tiếp Delta Lake files
 -- mà KHÔNG cần ETL thêm. FastAPI backend chỉ cần:
---   SELECT * FROM minio_delta_catalog.gold.gold_tool_summary WHERE tool_name = 'kafka'
+--   SELECT * FROM minio_iceberg_catalog.gold.gold_tool_summary WHERE tool_name = 'kafka'
 -- =============================================================================
 
 -- 1. Tạo External Catalog kết nối MinIO
-CREATE EXTERNAL CATALOG IF NOT EXISTS minio_delta_catalog
+CREATE EXTERNAL CATALOG IF NOT EXISTS minio_iceberg_catalog
 PROPERTIES (
     "type"                          = "deltalake",
     "hive.metastore.type"           = "glue",
@@ -474,12 +509,14 @@ PROPERTIES (
 );
 
 -- 2. Tạo database trong catalog (mapping tới bucket)
-CREATE DATABASE IF NOT EXISTS minio_delta_catalog.gold;
+CREATE DATABASE IF NOT EXISTS minio_iceberg_catalog.gold;
 
 -- 3. Tạo external table trỏ tới gold_tool_summary Delta Lake
-CREATE EXTERNAL TABLE IF NOT EXISTS minio_delta_catalog.gold.gold_tool_summary (
+CREATE EXTERNAL TABLE IF NOT EXISTS minio_iceberg_catalog.gold.gold_tool_summary (
     tool_name           VARCHAR(100)    NOT NULL    COMMENT 'Tên tool (e.g. apache-kafka)',
     latest_version      VARCHAR(50)                 COMMENT 'Version mới nhất (semantic versioning)',
+    previous_version    VARCHAR(50)                 COMMENT 'Version kề trước',
+    risk_level          VARCHAR(20)                 COMMENT 'Mức độ rủi ro cập nhật',
     eol_date            DATE                        COMMENT 'End-of-Life date',
     eos_date            DATE                        COMMENT 'End-of-Sale date',
     total_cve_critical  INT             NOT NULL    COMMENT 'Tổng CVE severity Critical',
@@ -492,15 +529,15 @@ PROPERTIES (
 );
 
 -- 4. Verify
-SELECT * FROM minio_delta_catalog.gold.gold_tool_summary ORDER BY total_cve_critical DESC;
+SELECT * FROM minio_iceberg_catalog.gold.gold_tool_summary ORDER BY total_cve_critical DESC;
 
 -- =============================================================================
 -- Silver layer tables (optional — nếu FastAPI cần query chi tiết)
 -- =============================================================================
 
-CREATE DATABASE IF NOT EXISTS minio_delta_catalog.silver;
+CREATE DATABASE IF NOT EXISTS minio_iceberg_catalog.silver;
 
-CREATE EXTERNAL TABLE IF NOT EXISTS minio_delta_catalog.silver.silver_releases (
+CREATE EXTERNAL TABLE IF NOT EXISTS minio_iceberg_catalog.silver.silver_releases (
     tool_name                VARCHAR(100)    NOT NULL,
     version                  VARCHAR(50)     NOT NULL,
     release_date             DATE,
@@ -515,7 +552,7 @@ PROPERTIES (
     "location" = "s3a://silver/silver_releases/"
 );
 
-CREATE EXTERNAL TABLE IF NOT EXISTS minio_delta_catalog.silver.silver_cves (
+CREATE EXTERNAL TABLE IF NOT EXISTS minio_iceberg_catalog.silver.silver_cves (
     cve_id              VARCHAR(30)     NOT NULL,
     tool_name           VARCHAR(100)    NOT NULL,
     affected_versions   JSON            NOT NULL,

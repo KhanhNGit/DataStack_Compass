@@ -45,9 +45,9 @@ async def asset_risk_overview(db: Connection = Depends(get_db)):
                 ELSE 'low'
             END AS risk_level
         FROM compass_internal.asset_inventory a
-        LEFT JOIN minio_delta_catalog.gold.gold_tool_summary g 
+        LEFT JOIN minio_iceberg_catalog.gold.gold_tool_summary g 
             ON a.tool_name = g.tool_name
-        LEFT JOIN minio_delta_catalog.silver.silver_cves c 
+        LEFT JOIN minio_iceberg_catalog.silver.silver_cves c 
             ON a.tool_name = c.tool_name 
             AND array_contains(c.affected_versions, a.version_in_use)
         GROUP BY 
@@ -83,7 +83,7 @@ async def asset_eol_timeline(db: Connection = Depends(get_db)):
             g.eol_date,
             DATEDIFF(g.eol_date, CURRENT_DATE()) AS days_remaining
         FROM compass_internal.asset_inventory a
-        LEFT JOIN minio_delta_catalog.gold.gold_tool_summary g 
+        LEFT JOIN minio_iceberg_catalog.gold.gold_tool_summary g 
             ON a.tool_name = g.tool_name
         WHERE g.eol_date IS NOT NULL
         GROUP BY 

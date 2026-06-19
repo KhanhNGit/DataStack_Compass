@@ -11,11 +11,7 @@ import logging
 from datetime import datetime
 import time
 
-try:
-    import feedparser
-except ImportError:
-    feedparser = None
-
+import feedparser
 from ingestion.connectors.base_connector import BaseConnector, ConnectorError
 
 logger = logging.getLogger(__name__)
@@ -39,9 +35,6 @@ class TechBlogConnector(BaseConnector):
         muốn lấy blog post mới nhất mà không phụ thuộc phiên bản.
         Nếu truyền vào version, bộ lọc sẽ tìm kiếm từ khóa version trong text.
         """
-        if feedparser is None:
-            raise ConnectorError("Thư viện 'feedparser' chưa được cài đặt. Hãy chạy pip install feedparser.")
-            
         url = self.FEEDS.get(tool_name)
         if not url:
             raise ConnectorError(f"Không có feed URL cho {tool_name}")

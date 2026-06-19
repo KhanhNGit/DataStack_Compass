@@ -48,11 +48,11 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 TOOLS: List[Dict[str, str]] = [
-    {"name": "apache-kafka",  "owner": "apache",    "repo": "kafka"},
-    {"name": "apache-flink",  "owner": "apache",    "repo": "flink"},
-    {"name": "apache-spark",  "owner": "apache",    "repo": "spark"},
-    {"name": "delta-io",      "owner": "delta-io",  "repo": "delta"},
-    {"name": "starrocks",     "owner": "StarRocks", "repo": "starrocks"},
+    {"name": "apache-kafka",  "source_type": "jira",   "project_key": "KAFKA"},
+    {"name": "apache-flink",  "source_type": "jira",   "project_key": "FLINK"},
+    {"name": "apache-spark",  "source_type": "jira",   "project_key": "SPARK"},
+    {"name": "delta-io",      "source_type": "github", "owner": "delta-io",  "repo": "delta"},
+    {"name": "starrocks",     "source_type": "github", "owner": "StarRocks", "repo": "starrocks"},
 ]
 
 # =============================================================================
@@ -166,33 +166,33 @@ def ingest_software_releases():
     # Task 2: Fetch releases (dynamic task mapping)
     # ─────────────────────────────────────────────────────────────────────
 
-    @task(task_id="fetch_releases", retries=2, retry_delay=timedelta(minutes=3))
+    @task(
+        task_id="fetch_releases",
+        retries=2,
+        retry_delay=timedelta(minutes=3),
+        max_active_tis_per_dag=1,
+    )
     def fetch_releases(tool: dict) -> dict:
         """Fetch releases từ GitHub và lưu vào Delta Lake bronze layer.
 
         Parameters
         ----------
         tool : dict
-            Chứa keys: ``name``, ``owner``, ``repo``.
+            Chứa config của tool
 
         Returns
         -------
         dict
             Summary: ``{tool_name, version, status, releases_count}``.
         """
-        from ingestion.connectors.base_connector import (
-            ConnectorError,
-            GitHubReleaseConnector,
-        )
+        from ingestion.connectors.factory import ConnectorFactory
+        from ingestion.connectors.base_connector import ConnectorError
         from processing.spark_utils.session import get_spark_session
 
         tool_name = tool["name"]
-        owner = tool["owner"]
-        repo = tool["repo"]
+        logger.info("Fetching releases for %s", tool_name)
 
-        logger.info("Fetching releases for %s (%s/%s)", tool_name, owner, repo)
-
-        connector = GitHubReleaseConnector(owner=owner, repo=repo)
+        connector = ConnectorFactory.get_connector(tool)
 
         try:
             # Lấy latest release (kèm list tất cả releases)
@@ -224,8 +224,15 @@ def ingest_software_releases():
         finally:
             spark.stop()
 
-        releases_count = len(data.get("releases", []))
-        latest_version = data.get("tag_name", "unknown")
+        if "releases" in data:
+            releases_count = len(data["releases"])
+            latest_version = data.get("tag_name", "unknown")
+        elif "issues" in data:
+            releases_count = len(data["issues"])
+            latest_version = data.get("version", "unknown")
+        else:
+            releases_count = 0
+            latest_version = data.get("version", "unknown")
 
         logger.info(
             "✓ %s: saved %d releases, latest=%s",

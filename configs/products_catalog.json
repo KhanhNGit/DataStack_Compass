@@ -1,0 +1,64 @@
+[
+  {
+    "product_id": "apache-kafka",
+    "vendor": "Apache",
+    "name": "Kafka",
+    "aliases": [
+      "Kafka",
+      "Apache Kafka"
+    ],
+    "cpe_patterns": [
+      "apache:kafka"
+    ]
+  },
+  {
+    "product_id": "apache-flink",
+    "vendor": "Apache",
+    "name": "Flink",
+    "aliases": [
+      "Flink",
+      "Apache Flink"
+    ],
+    "cpe_patterns": [
+      "apache:flink"
+    ]
+  },
+  {
+    "product_id": "apache-spark",
+    "vendor": "Apache",
+    "name": "Spark",
+    "aliases": [
+      "Spark",
+      "Apache Spark"
+    ],
+    "cpe_patterns": [
+      "apache:spark"
+    ]
+  },
+  {
+    "product_id": "delta-io",
+    "vendor": "Delta Lake",
+    "name": "Delta Lake",
+    "aliases": [
+      "Delta Lake",
+      "Delta"
+    ],
+    "cpe_patterns": [
+      "linuxfoundation:delta_lake",
+      "delta:delta_lake",
+      "delta-io:delta"
+    ]
+  },
+  {
+    "product_id": "starrocks",
+    "vendor": "StarRocks",
+    "name": "StarRocks",
+    "aliases": [
+      "StarRocks",
+      "StarRocks DB"
+    ],
+    "cpe_patterns": [
+      "starrocks:starrocks"
+    ]
+  }
+]

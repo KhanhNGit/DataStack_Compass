@@ -26,9 +26,9 @@ router = APIRouter()
 # StarRocks External Catalog table references
 # =============================================================================
 
-_GOLD_SUMMARY = "minio_delta_catalog.gold.gold_tool_summary"
-_SILVER_RELEASES = "minio_delta_catalog.silver.silver_releases"
-_SILVER_CVES = "minio_delta_catalog.silver.silver_cves"
+_GOLD_SUMMARY = "minio_iceberg_catalog.gold.gold_tool_summary"
+_SILVER_RELEASES = "minio_iceberg_catalog.silver.silver_releases"
+_SILVER_CVES = "minio_iceberg_catalog.silver.silver_cves"
 
 
 def _sanitize_like_input(value: str) -> str:

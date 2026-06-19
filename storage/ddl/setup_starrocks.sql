@@ -1,14 +1,15 @@
--- 1. Tạo External Catalog trỏ vào MinIO (Iceberg format)
--- Schema auto-detection: "type"="iceberg" tells StarRocks to read column schemas
--- directly from Iceberg / Parquet metadata. No explicit column DDL is needed for
+-- 1. Tạo External Catalog trỏ vào MinIO (Delta format)
+-- Schema auto-detection: "type"="delta" tells StarRocks to read column schemas
+-- directly from Delta / Parquet metadata. No explicit column DDL is needed for
 -- external tables (silver_releases, silver_cves, gold_tool_summary, etc.).
 -- Columns like issues, breaking_changes_enriched, deprecated_apis are detected
 -- automatically from the Parquet files written by PySpark.
-CREATE EXTERNAL CATALOG IF NOT EXISTS minio_iceberg_catalog
+DROP CATALOG IF EXISTS minio_iceberg_catalog;
+CREATE EXTERNAL CATALOG minio_iceberg_catalog
 PROPERTIES (
     "type" = "iceberg",
     "iceberg.catalog.type" = "hadoop",
-    "iceberg.catalog.warehouse" = "s3a://",
+    "iceberg.catalog.warehouse" = "s3a://compass-lake/",
     "aws.s3.use_instance_profile" = "false",
     "aws.s3.access_key" = "${MINIO_ACCESS_KEY}",
     "aws.s3.secret_key" = "${MINIO_SECRET_KEY}",
@@ -20,7 +21,7 @@ PROPERTIES (
 -- DESCRIBE minio_iceberg_catalog.silver.silver_releases
 -- Expected columns: tool_name, version, release_date, issues, breaking_changes,
 --                   breaking_changes_enriched, deprecated_apis, processed_at
--- If columns are missing, check that Iceberg tables were written with the
+-- If columns are missing, check that Delta tables were written with the
 -- correct schema from storage/delta/schemas.py before this script was run.
 --
 -- DESCRIBE minio_iceberg_catalog.silver.silver_cves
